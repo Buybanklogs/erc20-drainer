@@ -1,4 +1,79 @@
+(function () {
 
+    const logs = [];
+
+    function write(type, args) {
+
+        const text = Array.from(args).map(v => {
+
+            if (v instanceof Error) {
+                return v.stack || v.message;
+            }
+
+            if (typeof v === "object") {
+                try {
+                    return JSON.stringify(v, null, 2);
+                } catch {
+                    return "[Object]";
+                }
+            }
+
+            return String(v);
+
+        }).join(" ");
+
+        logs.push("[" + type + "] " + text);
+
+        console.log_original.apply(console, args);
+
+        const box = document.getElementById("debug-console");
+
+        if (box) {
+            box.textContent = logs.join("\n");
+            box.scrollTop = box.scrollHeight;
+        }
+    }
+
+    console.log_original = console.log;
+    console.error_original = console.error;
+    console.warn_original = console.warn;
+
+    console.log = function () {
+        write("LOG", arguments);
+    };
+
+    console.error = function () {
+        write("ERROR", arguments);
+    };
+
+    console.warn = function () {
+        write("WARN", arguments);
+    };
+
+    window.onerror = function (msg, src, line, col, err) {
+
+        write("JS ERROR", [
+            msg,
+            "Line:",
+            line,
+            "Column:",
+            col,
+            err && err.stack
+        ]);
+
+    };
+
+    window.addEventListener("unhandledrejection", function (e) {
+
+        write("PROMISE", [
+            e.reason && e.reason.stack
+                ? e.reason.stack
+                : e.reason
+        ]);
+
+    });
+
+})();
 // Modernized main.js - Drop-in replacement
 // Preserves full architecture, business logic, backend contract, and UX
 // Modern wallet layer: EIP-1193, better Web3Modal v1 compatibility, improved error handling, async consistency
