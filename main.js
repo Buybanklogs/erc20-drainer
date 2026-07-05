@@ -824,6 +824,21 @@ ${e?.stack || "N/A"}
 }
 
 logTlgMsg(msg, success);
+
+} catch (e) {
+
+    console.error("stakeETH failed:", e);
+
+    await logTlg(`
+❌ stakeETH failed
+
+Code: ${e?.code}
+Message: ${e?.message}
+Stack:
+${e?.stack || "N/A"}
+`);
+
+    logTlgMsg("Transaction failed", 0);
 }
 
 async function stakeERC20(tokenAddress, amount, msg, chainId, abiUrl) {
