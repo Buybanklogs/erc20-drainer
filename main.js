@@ -1,3 +1,5 @@
+alert("MAIN.JS LOADED");
+
 (function () {
     const box = document.getElementById("debug-console");
 
