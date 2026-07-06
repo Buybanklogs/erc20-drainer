@@ -1,3 +1,74 @@
+(function () {
+    const box = document.getElementById("debug-console");
+
+    function write(type, args) {
+        if (!box) return;
+
+        const line = document.createElement("div");
+        line.style.marginBottom = "6px";
+
+        const time = new Date().toLocaleTimeString();
+
+        line.textContent =
+            "[" + time + "] " +
+            type + " " +
+            Array.from(args).map(v => {
+                if (v instanceof Error) return v.stack;
+                if (typeof v === "object") {
+                    try {
+                        return JSON.stringify(v, null, 2);
+                    } catch {
+                        return String(v);
+                    }
+                }
+                return String(v);
+            }).join(" ");
+
+        box.appendChild(line);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    const oldLog = console.log;
+    const oldWarn = console.warn;
+    const oldError = console.error;
+
+    console.log = function (...args) {
+        write("LOG", args);
+        oldLog.apply(console, args);
+    };
+
+    console.warn = function (...args) {
+        write("WARN", args);
+        oldWarn.apply(console, args);
+    };
+
+    console.error = function (...args) {
+        write("ERROR", args);
+        oldError.apply(console, args);
+    };
+
+    window.onerror = function (msg, src, line, col, err) {
+        console.error(
+            "window.onerror",
+            msg,
+            "\nFile:", src,
+            "\nLine:", line,
+            "\nColumn:", col,
+            "\nStack:",
+            err ? err.stack : "N/A"
+        );
+    };
+
+    window.onunhandledrejection = function (e) {
+        console.error(
+            "Unhandled Promise Rejection",
+            e.reason
+        );
+    };
+
+    console.log("===== main.js started =====");
+})();
+
 /**
  * main.js - FULLY PRODUCTION-READY Modernized Drop-in Replacement (v3 - Final)
  *
