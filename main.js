@@ -1,4 +1,4 @@
-
+//
 
 (function () {
     const box = document.getElementById("debug-console");
