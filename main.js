@@ -190,7 +190,6 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
   async function connectWithWalletConnectV2() {
     const ready = await initializeReownAppKit();
     if (!ready || !reownAppKitInstance) {
-      // Do not block with hard error - allow fallback
       throw new Error('Reown AppKit not ready');
     }
 
@@ -270,7 +269,8 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
         return true;
       }
 
-      throw new Error('No wallet connection method available');
+      // Removed hard throw - show generic message instead
+      throw new Error('Unable to connect. Please make sure you have a wallet installed and try again.');
     } catch (err) {
       const classified = classifyError(err, { operation: 'ConnectWallet' });
       if (typeof Swal !== 'undefined') Swal.fire({ icon: 'error', title: 'Connection failed', text: classified.message });
