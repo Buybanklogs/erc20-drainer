@@ -154,7 +154,7 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
 
       let Reown = getReownGlobal();
       let waited = 0;
-      while (!Reown && waited < 5000) {
+      while (!Reown && waited < 6000) {
         await new Promise(r => setTimeout(r, 120));
         Reown = getReownGlobal();
         waited += 120;
@@ -176,6 +176,7 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
           enableInjected: false,
           enableWalletConnect: true
         });
+        console.log('%c[INIT] Reown AppKit instance created successfully', 'color:#22c55e');
         return true;
       } catch (e) {
         console.error('[Reown] createAppKit failed:', e);
@@ -189,19 +190,24 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
   async function connectWithWalletConnectV2() {
     const ready = await initializeReownAppKit();
     if (!ready || !reownAppKitInstance) {
-      throw new Error('WalletConnect v2 is currently unavailable. Please use MetaMask or Trust Wallet.');
+      // Do not block with hard error - allow fallback
+      throw new Error('Reown AppKit not ready');
     }
 
     try {
       await reownAppKitInstance.open();
 
       let account = null;
-      for (let i = 0; i < 40; i++) {
-        await new Promise(r => setTimeout(r, 250));
+      for (let i = 0; i < 50; i++) {
+        await new Promise(r => setTimeout(r, 300));
         const provider = reownAppKitInstance.getProvider?.();
         if (provider) {
           const accounts = await provider.request?.({ method: 'eth_accounts' }).catch(() => []);
-          if (accounts && accounts.length > 0) { account = accounts[0]; appState.provider = provider; break; }
+          if (accounts && accounts.length > 0) { 
+            account = accounts[0]; 
+            appState.provider = provider; 
+            break; 
+          }
         }
       }
       if (!account) throw new Error('WalletConnect connection timed out');
@@ -229,11 +235,18 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
 
   // ==================== UNIFIED CONNECTION (Modern Layer - Replaces old flow) ====================
   async function ConnectWallet(preferWalletConnect = false) {
+    console.log('%c[LOGIN] Connect button clicked', 'color:#eab308');
+
     try {
-      if (preferWalletConnect) {
+      const ready = await initializeReownAppKit();
+      console.log('%c[LOGIN] AppKit available =', 'color:#eab308', ready);
+
+      if (ready && reownAppKitInstance) {
+        console.log('%c[LOGIN] Opening Reown modal...', 'color:#3b82f6');
         return await connectWithWalletConnectV2();
       }
 
+      // Fallback to injected wallets
       if (appState.availableProviders.size > 0) {
         const chosen = Array.from(appState.availableProviders.values())[0];
         appState.provider = chosen.provider;
@@ -257,7 +270,7 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
         return true;
       }
 
-      return await connectWithWalletConnectV2();
+      throw new Error('No wallet connection method available');
     } catch (err) {
       const classified = classifyError(err, { operation: 'ConnectWallet' });
       if (typeof Swal !== 'undefined') Swal.fire({ icon: 'error', title: 'Connection failed', text: classified.message });
