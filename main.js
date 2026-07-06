@@ -24,7 +24,7 @@
 // ============================================
 // CONFIGURATION - SET THESE
 // ============================================
-const REOWN_PROJECT_ID = 'YOUR_REOWN_PROJECT_ID_HERE'; // ← Replace with your project ID from https://cloud.reown.com (required for genuine WC v2)
+const REOWN_PROJECT_ID = '19d9b1a7e899eca00c33891cc97132ce'; // ← Replace with your project ID from https://cloud.reown.com (required for genuine WC v2)
 
 // === BACKEND COMPATIBILITY VERIFIED (Formal) ===
 // All backend calls use EXACT original payloads, URLs, methods, and field names.
