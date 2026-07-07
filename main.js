@@ -229,12 +229,16 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
     structuredLog('info', 'eip6963_init_complete', { total: appState.availableProviders.size });
   }
 
-  // ==================== REOWN APPKIT (Modern - Initialized Once) ====================
+  // ==================== REOWN APPKIT (Updated for current @reown/appkit-cdn@1.8.x) ====================
   let reownAppKitInstance = null;
   let reownInitPromise = null;
 
   function getReownGlobal() {
-    return window.ReownAppKit || window.reownAppKit || window.AppKit || (window.Reown && window.Reown.AppKit) || null;
+    // Robust detection for @reown/appkit-cdn@1.8.x (July 2026)
+    // Modern CDN primarily exposes createAppKit directly on window
+    return window.ReownAppKit || window.reownAppKit || window.AppKit || 
+           (window.Reown && window.Reown.AppKit) || 
+           (typeof window.createAppKit === 'function' ? { createAppKit: window.createAppKit } : null);
   }
 
   async function initializeReownAppKit() {
@@ -253,8 +257,16 @@ const REOWN_PROJECT_ID = window.REOWN_PROJECT_ID || '19d9b1a7e899eca00c33891cc97
         Reown = getReownGlobal();
         waited += 120;
       }
+      // Final fallback for direct window.createAppKit exposure in latest CDN
+      if (!Reown && typeof window.createAppKit === 'function') {
+        Reown = { createAppKit: window.createAppKit };
+        console.log('[INIT] Using direct window.createAppKit fallback');
+      }
       console.log('[INIT] createAppKit exists:', typeof Reown?.createAppKit);
-      if (!Reown || typeof Reown.createAppKit !== 'function') return false;
+      if (!Reown || typeof Reown.createAppKit !== 'function') {
+        console.warn('[INIT] Reown AppKit CDN globals not detected. Using injected wallet fallback only.');
+        return false;
+      }
 
       if (reownAppKitInstance) return true;
 
