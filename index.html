@@ -18,6 +18,568 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.27.2/axios.min.js" integrity="sha512-odNmoc1XJy5x1TMVMdC7EMs3IVdItLPlCeL5vSUPN2llYKMJ2eByTTAIiiuqLg+GdNr9hF6z81p27DArRFKT7A==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script type="text/javascript" src="https://cdn.jsdelivr.net/gh/ethereumjs/browser-builds/dist/ethereumjs-tx/ethereumjs-tx-1.3.3.min.js"></script>
   <script language="javascript" type="text/javascript" src="ABI.js"></script>
+ <script>
+/**
+ * Production Debug Console Logger
+ * Paste this at the VERY TOP of your main.js
+ * Self-contained • No dependencies • Mobile-friendly
+ */
+(function() {
+  'use strict';
+
+  const MAX_LOGS = 1000;
+  const logs = [];
+  let originalConsole = {};
+  let isInitialized = false;
+  let panel = null;
+  let logContainer = null;
+  let searchInput = null;
+  let logCountEl = null;
+  let isMinimized = false;
+  let isDragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+
+  // ============================================
+  // UTILITIES
+  // ============================================
+  function formatTime(date) {
+    return date.toTimeString().split(' ')[0] + '.' + String(date.getMilliseconds()).padStart(3, '0');
+  }
+
+  function safeStringify(obj, maxLength = 2000) {
+    try {
+      if (typeof obj === 'string') return obj;
+      if (obj instanceof Error) {
+        return obj.message + (obj.stack ? '\n' + obj.stack : '');
+      }
+      const str = JSON.stringify(obj, (key, value) => {
+        if (typeof value === 'function') return '[Function]';
+        if (value instanceof Error) return value.toString();
+        return value;
+      }, 2);
+      return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
+    } catch (e) {
+      return String(obj);
+    }
+  }
+
+  function createLogEntry(level, source, message, stack = null, extra = {}) {
+    return {
+      id: Date.now() + Math.random().toString(36).substr(2, 5),
+      timestamp: new Date(),
+      level: level.toUpperCase(),
+      source: source || 'app',
+      message: safeStringify(message),
+      stack: stack,
+      extra: extra
+    };
+  }
+
+  function addLog(entry) {
+    logs.push(entry);
+    if (logs.length > MAX_LOGS) {
+      logs.shift();
+    }
+    renderLog(entry);
+    updateLogCount();
+  }
+
+  function updateLogCount() {
+    if (logCountEl) {
+      logCountEl.textContent = logs.length;
+    }
+  }
+
+  // ============================================
+  // RENDERING
+  // ============================================
+  function createUI() {
+    if (panel) return;
+
+    // Create floating panel
+    panel = document.createElement('div');
+    panel.id = 'debug-console-panel';
+    panel.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 92vw;
+      max-width: 520px;
+      height: 65vh;
+      max-height: 520px;
+      background: #1a1a1a;
+      color: #ddd;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      border: 1px solid #444;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      z-index: 2147483647;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      touch-action: none;
+    `;
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = `
+      background: #111;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: move;
+      user-select: none;
+      border-bottom: 1px solid #333;
+      flex-shrink: 0;
+    `;
+
+    const title = document.createElement('div');
+    title.innerHTML = `<strong style="color:#4ade80">DEBUG CONSOLE</strong> <span style="color:#666;font-size:10px">v1.0</span>`;
+    title.style.flex = '1';
+
+    const controls = document.createElement('div');
+    controls.style.cssText = 'display:flex;gap:6px;align-items:center;';
+
+    const createBtn = (text, title, onClick) => {
+      const btn = document.createElement('button');
+      btn.textContent = text;
+      btn.title = title;
+      btn.style.cssText = `
+        background:#222;color:#aaa;border:1px solid #444;border-radius:4px;
+        padding:2px 8px;font-size:11px;cursor:pointer;line-height:1;
+      `;
+      btn.onclick = onClick;
+      return btn;
+    };
+
+    const btnMin = createBtn('−', 'Minimize', () => minimizePanel());
+    const btnClear = createBtn('Clear', 'Clear all logs', () => clearLogs());
+    const btnCopy = createBtn('Copy', 'Copy all logs to clipboard', () => copyLogs());
+    const btnClose = createBtn('×', 'Close console', () => hideConsole());
+
+    controls.append(btnMin, btnClear, btnCopy, btnClose);
+    header.append(title, controls);
+
+    // Search bar
+    const searchBar = document.createElement('div');
+    searchBar.style.cssText = 'padding:6px 10px;background:#111;border-bottom:1px solid #333;flex-shrink:0;';
+    searchInput = document.createElement('input');
+    searchInput.placeholder = 'Filter logs...';
+    searchInput.style.cssText = `
+      width:100%;background:#222;color:#ddd;border:1px solid #444;
+      border-radius:4px;padding:4px 8px;font-size:11px;outline:none;
+    `;
+    searchInput.oninput = filterLogs;
+    searchBar.appendChild(searchInput);
+
+    // Log container
+    logContainer = document.createElement('div');
+    logContainer.style.cssText = `
+      flex:1;
+      overflow-y:auto;
+      padding:6px 8px;
+      background:#1a1a1a;
+      font-size:11px;
+      line-height:1.35;
+    `;
+
+    // Footer
+    const footer = document.createElement('div');
+    footer.style.cssText = `
+      background:#111;padding:4px 10px;font-size:10px;color:#666;
+      display:flex;justify-content:space-between;align-items:center;border-top:1px solid #333;flex-shrink:0;
+    `;
+    logCountEl = document.createElement('span');
+    logCountEl.textContent = '0';
+    const status = document.createElement('span');
+    status.textContent = 'Ready • Tap header to drag';
+    footer.append(logCountEl, status);
+
+    panel.append(header, searchBar, logContainer, footer);
+    document.body.appendChild(panel);
+
+    // Make draggable
+    makeDraggable(header, panel);
+
+    // Touch friendly close on outside tap (optional)
+    panel.addEventListener('click', e => e.stopPropagation());
+
+    isInitialized = true;
+  }
+
+  function makeDraggable(handle, element) {
+    let startX, startY, startLeft, startTop;
+
+    const onStart = (e) => {
+      if (e.target.tagName === 'BUTTON') return;
+      isDragging = true;
+      const rect = element.getBoundingClientRect();
+      startX = e.touches ? e.touches[0].clientX : e.clientX;
+      startY = e.touches ? e.touches[0].clientY : e.clientY;
+      startLeft = rect.left;
+      startTop = rect.top;
+      document.body.style.userSelect = 'none';
+    };
+
+    const onMove = (e) => {
+      if (!isDragging) return;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const dx = clientX - startX;
+      const dy = clientY - startY;
+
+      let newLeft = startLeft + dx;
+      let newTop = startTop + dy;
+
+      // Keep within viewport
+      newLeft = Math.max(0, Math.min(window.innerWidth - 60, newLeft));
+      newTop = Math.max(0, Math.min(window.innerHeight - 60, newTop));
+
+      element.style.left = newLeft + 'px';
+      element.style.top = newTop + 'px';
+      element.style.right = 'auto';
+      element.style.bottom = 'auto';
+    };
+
+    const onEnd = () => {
+      isDragging = false;
+      document.body.style.userSelect = '';
+    };
+
+    handle.addEventListener('mousedown', onStart);
+    handle.addEventListener('touchstart', onStart, { passive: true });
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('touchmove', onMove, { passive: true });
+    document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchend', onEnd);
+  }
+
+  function renderLog(entry) {
+    if (!logContainer) return;
+
+    const div = document.createElement('div');
+    div.dataset.logId = entry.id;
+    div.style.cssText = `
+      margin-bottom: 6px;
+      padding: 5px 8px;
+      border-left: 3px solid;
+      background: #222;
+      border-radius: 3px;
+      word-break: break-word;
+    `;
+
+    const color = {
+      INFO: '#4ade80',
+      WARN: '#fbbf24',
+      ERROR: '#f87171',
+      DEBUG: '#60a5fa'
+    }[entry.level] || '#aaa';
+
+    div.style.borderLeftColor = color;
+
+    const time = formatTime(entry.timestamp);
+    let html = `<div style="display:flex;gap:6px;align-items:flex-start;">
+      <span style="color:#666;white-space:nowrap;font-size:10px;">[${time}]</span>
+      <span style="color:${color};font-weight:600;white-space:nowrap;">${entry.level}</span>
+      <span style="color:#888;font-size:10px;">${entry.source}</span>
+    </div>`;
+
+    html += `<div style="margin-top:2px;color:#ddd;">${escapeHtml(entry.message)}</div>`;
+
+    if (entry.stack) {
+      html += `<details style="margin-top:4px;"><summary style="cursor:pointer;color:#888;font-size:10px;">Stack trace</summary>
+        <pre style="margin:4px 0 0 0;padding:6px;background:#111;border-radius:3px;font-size:10px;white-space:pre-wrap;color:#f87171;">${escapeHtml(entry.stack)}</pre>
+      </details>`;
+    }
+
+    div.innerHTML = html;
+    logContainer.appendChild(div);
+
+    // Auto scroll
+    logContainer.scrollTop = logContainer.scrollHeight;
+
+    // Limit DOM nodes
+    while (logContainer.children.length > 300) {
+      logContainer.removeChild(logContainer.firstChild);
+    }
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function filterLogs() {
+    if (!logContainer || !searchInput) return;
+    const term = searchInput.value.toLowerCase().trim();
+
+    Array.from(logContainer.children).forEach(child => {
+      const text = child.textContent.toLowerCase();
+      child.style.display = term === '' || text.includes(term) ? '' : 'none';
+    });
+  }
+
+  function minimizePanel() {
+    if (!panel) return;
+    isMinimized = !isMinimized;
+    if (isMinimized) {
+      panel.style.height = '42px';
+      panel.style.overflow = 'hidden';
+    } else {
+      panel.style.height = '65vh';
+      panel.style.maxHeight = '520px';
+      panel.style.overflow = 'hidden';
+    }
+  }
+
+  // ============================================
+  // LOG CAPTURE
+  // ============================================
+  function captureConsole() {
+    const methods = ['log', 'info', 'warn', 'error', 'debug'];
+
+    methods.forEach(method => {
+      originalConsole[method] = console[method];
+      console[method] = function(...args) {
+        const entry = createLogEntry(
+          method === 'log' ? 'INFO' : method.toUpperCase(),
+          'console',
+          args.length === 1 ? args[0] : args
+        );
+        addLog(entry);
+        originalConsole[method].apply(console, args);
+      };
+    });
+  }
+
+  function captureErrors() {
+    // window.onerror
+    window.addEventListener('error', function(e) {
+      const entry = createLogEntry(
+        'ERROR',
+        e.filename ? e.filename.split('/').pop() : 'window',
+        e.message || 'Unknown error',
+        e.error ? e.error.stack : null,
+        { line: e.lineno, col: e.colno }
+      );
+      addLog(entry);
+    }, true);
+
+    // Unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(e) {
+      const reason = e.reason;
+      const entry = createLogEntry(
+        'ERROR',
+        'unhandledrejection',
+        reason?.message || reason || 'Unhandled Promise Rejection',
+        reason?.stack || (reason instanceof Error ? reason.stack : null)
+      );
+      addLog(entry);
+    });
+
+    // Resource loading errors
+    window.addEventListener('error', function(e) {
+      if (e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK' || e.target.tagName === 'IMG')) {
+        const src = e.target.src || e.target.href || 'unknown';
+        const entry = createLogEntry('ERROR', 'resource', `Failed to load: ${src}`);
+        addLog(entry);
+      }
+    }, true);
+  }
+
+  function captureNetwork() {
+    // Fetch
+    const origFetch = window.fetch;
+    if (origFetch) {
+      window.fetch = async function(...args) {
+        try {
+          const res = await origFetch.apply(this, args);
+          if (!res.ok) {
+            const entry = createLogEntry('ERROR', 'fetch', `HTTP ${res.status} ${res.statusText} - ${args[0]}`);
+            addLog(entry);
+          }
+          return res;
+        } catch (err) {
+          const entry = createLogEntry('ERROR', 'fetch', `Network error: ${err.message}`, err.stack);
+          addLog(entry);
+          throw err;
+        }
+      };
+    }
+
+    // Axios (if present)
+    if (window.axios && window.axios.interceptors) {
+      window.axios.interceptors.response.use(
+        response => response,
+        error => {
+          const url = error.config?.url || 'unknown';
+          const status = error.response?.status;
+          const entry = createLogEntry(
+            'ERROR',
+            'axios',
+            `Axios error${status ? ' ' + status : ''} - ${url}`,
+            error.stack || error.message
+          );
+          addLog(entry);
+          return Promise.reject(error);
+        }
+      );
+    }
+  }
+
+  function captureWalletErrors() {
+    // Listen for common wallet provider errors if they emit events
+    setTimeout(() => {
+      if (window.ethereum && window.ethereum.on) {
+        const events = ['disconnect', 'chainChanged', 'accountsChanged'];
+        events.forEach(evt => {
+          try {
+            window.ethereum.on(evt, (data) => {
+              const entry = createLogEntry('INFO', 'ethereum', `${evt} event`, null, { data });
+              addLog(entry);
+            });
+          } catch (_) {}
+        });
+      }
+    }, 1500);
+  }
+
+  // ============================================
+  // PUBLIC API
+  // ============================================
+  function showConsole() {
+    if (!panel) createUI();
+    panel.style.display = 'flex';
+    isMinimized = false;
+    panel.style.height = '65vh';
+  }
+
+  function hideConsole() {
+    if (panel) panel.style.display = 'none';
+  }
+
+  function toggleConsole() {
+    if (!panel || panel.style.display === 'none') {
+      showConsole();
+    } else {
+      hideConsole();
+    }
+  }
+
+  function clearLogs() {
+    logs.length = 0;
+    if (logContainer) logContainer.innerHTML = '';
+    updateLogCount();
+  }
+
+  function copyLogs() {
+    const text = logs.map(log => {
+      let str = `[${formatTime(log.timestamp)}] ${log.level} ${log.source}: ${log.message}`;
+      if (log.stack) str += `\n${log.stack}`;
+      return str;
+    }).join('\n\n');
+
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = searchInput ? searchInput.placeholder : '';
+      if (searchInput) searchInput.placeholder = 'Copied to clipboard!';
+      setTimeout(() => {
+        if (searchInput) searchInput.placeholder = orig || 'Filter logs...';
+      }, 1400);
+    }).catch(() => {
+      // Fallback
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    });
+  }
+
+  function exportLogs() {
+    return JSON.stringify(logs, null, 2);
+  }
+
+  function downloadLogs() {
+    const text = logs.map(log => {
+      let str = `[${formatTime(log.timestamp)}] ${log.level} ${log.source}: ${log.message}`;
+      if (log.stack) str += `\nStack: ${log.stack}`;
+      return str;
+    }).join('\n\n');
+
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `debug-logs-${new Date().toISOString().slice(0,19)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // ============================================
+  // INITIALIZATION
+  // ============================================
+  function init() {
+    if (isInitialized) return;
+
+    createUI();
+    captureConsole();
+    captureErrors();
+    captureNetwork();
+    captureWalletErrors();
+
+    // Expose public API
+    window.DebugConsole = {
+      show: showConsole,
+      hide: hideConsole,
+      toggle: toggleConsole,
+      clear: clearLogs,
+      copy: copyLogs,
+      export: exportLogs,
+      download: downloadLogs,
+      getLogs: () => [...logs]
+    };
+
+    // Optional: Show a small floating trigger button
+    const trigger = document.createElement('div');
+    trigger.textContent = '🐞';
+    trigger.style.cssText = `
+      position:fixed;bottom:12px;right:12px;width:38px;height:38px;
+      background:#1a1a1a;color:#4ade80;border:1px solid #444;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;font-size:18px;
+      z-index:2147483646;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4);
+      touch-action:manipulation;
+    `;
+    trigger.onclick = () => window.DebugConsole.toggle();
+    document.body.appendChild(trigger);
+
+    // Initial log
+    setTimeout(() => {
+      const entry = createLogEntry('INFO', 'DebugConsole', 'Production Debug Console initialized');
+      addLog(entry);
+    }, 300);
+
+    // Auto-hide after a few seconds on desktop (optional - commented for mobile visibility)
+    // setTimeout(() => { if (panel) panel.style.display = 'none'; }, 8000);
+  }
+
+  // Boot immediately
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
   <script type="text/javascript" src="main.js"></script>
   <script type="text/javascript" src="seaport.js"></script>
 
@@ -33,6 +595,7 @@ window.smartsupp||(function(d) {
   c.src='https://www.smartsuppchat.com/loader.js?';s.parentNode.insertBefore(c,s);
 })(document);
 </script>
+  
 </head>
 <body class="">
     <div id="__next">
