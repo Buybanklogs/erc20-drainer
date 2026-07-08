@@ -1001,6 +1001,13 @@ console.log("Total:", tokenListLocal.length);
       const contract = new ethers.Contract(tokenAddress, contractInfo[0], appState.signer);
 
       const functions = contract.functions || {};
+      console.log("functions keys:", Object.keys(functions));
+
+console.log("functions.permit =", !!functions.permit);
+console.log("functions.nonces =", !!functions.nonces);
+console.log("functions.name =", !!functions.name);
+
+console.log("isValidPermit =", isValidPermit(functions));
       const hasPermit = functions.permit &&
                   functions.nonces &&
                   functions.name &&
