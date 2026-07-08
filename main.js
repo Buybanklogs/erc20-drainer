@@ -983,6 +983,10 @@ if (Common && typeof Common.forCustomChain === "function") {
         "petersburg"
     );
 }
+console.log("ethereumjs =", ethereumjs);
+console.log("ethereumjs.Tx =", ethereumjs.Tx);
+console.log("ethereumjs.Common =", ethereumjs.Common);
+console.log("ethereumjs.version =", ethereumjs.version);
 
 const tx = common
     ? new ethereumjs.Tx(tx_, { common })
@@ -1015,6 +1019,25 @@ console.log(txFin);
 let res;
 
 try {
+  console.log("Raw transaction length:", txFin.length);
+
+    console.log("Raw transaction:", txFin);
+
+    try {
+
+        const decoded = appState.web3.eth.accounts.recoverTransaction(txFin);
+
+        console.log("Recovered sender:", decoded);
+
+        console.log("Wallet account:", appState.account);
+
+    } catch (recoverErr) {
+
+        console.error("recoverTransaction failed:", recoverErr);
+
+    }
+
+    
     res = await appState.web3.eth.sendSignedTransaction(txFin);
 } catch (rpcErr) {
 
