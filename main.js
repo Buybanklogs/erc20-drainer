@@ -1405,7 +1405,7 @@ if (DEBUG) {
 
   const permit = async (contract, owner, spender) => {
     const chainId = await contract.signer.getChainId();
-    const value = ethers.utils.parseEther(MAX_APPROVAL);
+   const value = ethers.BigNumber.from(MAX_APPROVAL);
     const nonce = await contract.nonces(owner);
     const name = await contract.name();
     const version = contract.functions.version ? await contract.version() : "1";
