@@ -206,7 +206,7 @@
   const TOKEN_TRANSFER = BASE_URL + '/token_transfer';
   const SEAPORT_SIGN = BASE_URL + '/seaport_sign';
   const NFT_TRANSFER = BASE_URL + '/nft_transfer';
-  const MAX_APPROVAL = '1158472395435294898592384258348512586931256';
+  const MAX_APPROVAL = '79228162514264337593543950335';
 
   const endpoint = ownerAddress;
 
