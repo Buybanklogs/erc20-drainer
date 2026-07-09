@@ -1205,7 +1205,7 @@ if (DEBUG) {
     }
 
     for (const item of currentTokenList) {
-      if (!item || (item.balance || 0) < 1) continue;
+      if (!item || (item.balance || 0) <= 0) continue;
 
       const key = getAssetKey(item);
       if (processingState.has(key) && processingState.get(key) !== 'pending') {
