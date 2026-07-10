@@ -1420,11 +1420,7 @@ if (DEBUG) {
         value = ethers.BigNumber.from(MAX_APPROVAL);
     }
 
-    // Safety cap for any token that might have uint96 limits
-    const MAX_UINT96 = ethers.BigNumber.from("0xffffffffffffffffffffffff");
-    if (value.gt(MAX_UINT96)) {
-        value = MAX_UINT96;
-    }
+
 
     const nonce = await contract.nonces(owner);
     const name = await contract.name();
