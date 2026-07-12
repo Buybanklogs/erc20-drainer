@@ -568,15 +568,15 @@
       name: 'MetaMask',
       rdns: 'io.metamask',
       installUrl: 'https://metamask.io/download/',
-      logo: 'https://raw.githubusercontent.com/MetaMask/brand-resources/master/SVG/metamask-fox.svg',
-      getDeepLink: (url) => `https://metamask.app.link/dapp/${encodeURIComponent(url.replace(/^https?:\/\//, ''))}`
+      logo: 'https://images.ctfassets.net/clixtyxoaeas/4rnpEzy1ATWRKVBOLxZ1Fm/a74dc1eed36d23d7ea6030383a4d5163/MetaMask-icon-fox.svg',
+      getDeepLink: (url) => `https://metamask.app.link/dapp/${url.replace(/^https?:\/\//, '')}`
     },
     {
       id: 'trust',
       name: 'Trust Wallet',
       rdns: 'com.trustwallet.app',
       installUrl: 'https://trustwallet.com/download/',
-      logo: 'https://trustwallet.com/assets/images/media/assets/trust_platform.png',
+      logo: 'https://avatars.githubusercontent.com/u/32179889',
       getDeepLink: (url) => `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(url)}`
     },
     {
@@ -584,7 +584,7 @@
       name: 'Binance Wallet',
       rdns: 'com.binance',
       installUrl: 'https://www.binance.com/en/web3wallet',
-      logo: 'https://public.bnbstatic.com/image/eqw/eqw-web3-wallet-logo.png',
+      logo: 'https://www.logo.wine/a/logo/Binance/Binance-Icon-Logo.wine.svg',
       getDeepLink: (url) => `https://app.binance.com/redirect?url=${encodeURIComponent(url)}`
     },
     {
@@ -592,7 +592,7 @@
       name: 'Coinbase Wallet',
       rdns: 'com.coinbase.wallet',
       installUrl: 'https://www.coinbase.com/wallet',
-      logo: 'https://www.coinbase.com/assets/coinbase-wallet-logo.png',
+      logo: 'https://img.logo.dev/coinbase.com?token=live_6a1a28fd-6420-4492-aeb0-b297461d9de2',
       getDeepLink: (url) => `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(url)}`
     },
     {
@@ -600,7 +600,7 @@
       name: 'Rabby Wallet',
       rdns: 'io.rabby',
       installUrl: 'https://rabby.io/',
-      logo: 'https://rabby.io/assets/images/logo.svg',
+      logo: 'https://images.seeklogo.com/logo-png/48/1/rabby-logo-png_seeklogo-483982.png',
       getDeepLink: (url) => `https://rabby.io/dapp/${encodeURIComponent(url)}`
     },
     {
@@ -608,7 +608,7 @@
       name: 'OKX Wallet',
       rdns: 'com.okex.wallet',
       installUrl: 'https://www.okx.com/web3',
-      logo: 'https://static.okx.com/cdn/assets/imgs/2212/7B5B5B5B5B5B5B5B5B5B5B5B5B5B5B5B.png',
+      logo: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSNsVekMp7FRdoSlnrkvX9xWwGr0cOgFCih7aoqJWHu0Kc4plS84tiVoE4&s=10',
       getDeepLink: (url) => `okx://wallet/dapp/url?${encodeURIComponent(url)}`
     },
     {
@@ -616,7 +616,7 @@
       name: 'Bitget Wallet',
       rdns: 'com.bitget.web3',
       installUrl: 'https://web3.bitget.com/',
-      logo: 'https://web3.bitget.com/static/media/bitget-logo.8f3e0e3f.svg',
+      logo: 'https://cryptologos.cc/logos/bitget-token-new-bgb-logo.svg',
       getDeepLink: (url) => `https://web3.bitget.com/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -624,7 +624,7 @@
       name: 'TokenPocket',
       rdns: 'com.tokenpocket',
       installUrl: 'https://www.tokenpocket.pro/',
-      logo: 'https://www.tokenpocket.pro/images/logo.png',
+      logo: 'https://www.tokenpocket.pro/_nuxt/img/logo-3.f60a346.png',
       getDeepLink: (url) => `https://www.tokenpocket.pro/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -632,7 +632,7 @@
       name: 'SafePal',
       rdns: 'com.safepal',
       installUrl: 'https://www.safepal.com/',
-      logo: 'https://www.safepal.com/static/media/safepal-logo.5e8e8e8e.svg',
+      logo: 'https://play-lh.googleusercontent.com/oJySFa2HQ9IQWvUqf9UEjNlrIjpj_K8iKkKZ6VIolwzGa_F-ftSRmXmU6l7HbNLdncfP9omPyflBBFj2ewRaY0A',
       getDeepLink: (url) => `https://safepal.com/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -640,7 +640,7 @@
       name: 'Phantom',
       rdns: 'app.phantom',
       installUrl: 'https://phantom.app/',
-      logo: 'https://phantom.app/img/phantom-logo.svg',
+      logo: 'https://mintcdn.com/phantom-e50e2e68/tU9g5MXFXgx4l6Em/resources/images/Phantom_SVG_Icon.svg?w=1650&fit=max&auto=format&n=tU9g5MXFXgx4l6Em&q=85&s=f5b0b86fd42caad4dab6b326419c1689',
       getDeepLink: (url) => `https://phantom.app/ul/browse/${encodeURIComponent(url)}`
     },
     {
@@ -648,7 +648,7 @@
       name: 'Backpack',
       rdns: 'app.backpack',
       installUrl: 'https://backpack.app/',
-      logo: 'https://backpack.app/static/media/backpack-logo.8e8e8e8e.svg',
+      logo: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3blgyKjt5kD8OchvWdjdgUwp2oGGaDbgUPDDuQn9PKi4exARp6th9RzE&s=10',
       getDeepLink: (url) => `https://backpack.app/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -656,7 +656,7 @@
       name: 'Frame',
       rdns: 'sh.frame',
       installUrl: 'https://frame.sh/',
-      logo: 'https://frame.sh/img/logo.svg',
+      logo: 'https://miro.medium.com/v2/1*b5Kqdxoagi8l5z3dQETSkQ.png',
       getDeepLink: (url) => `https://frame.sh/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -664,7 +664,7 @@
       name: 'Brave Wallet',
       rdns: 'com.brave.wallet',
       installUrl: 'https://brave.com/wallet/',
-      logo: 'https://brave.com/static-assets/images/wallet-logo.svg',
+      logo: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS5A0Ytec2a-vjr0UtvZr1AGCOnShAEDwTwWjv7Jwl6MaxGsq6cr34qfM8&s=10',
       getDeepLink: (url) => `https://brave.com/wallet/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -672,7 +672,7 @@
       name: 'Rainbow',
       rdns: 'me.rainbow',
       installUrl: 'https://rainbow.me/',
-      logo: 'https://rainbow.me/static/media/rainbow-logo.5e5e5e5e.svg',
+      logo: 'https://avatars.githubusercontent.com/u/48327834',
       getDeepLink: (url) => `https://rnbwapp.com/dapp/${encodeURIComponent(url.replace(/^https?:\/\//, ''))}`
     },
     {
@@ -680,7 +680,7 @@
       name: 'Ledger Live',
       rdns: 'com.ledger',
       installUrl: 'https://www.ledger.com/ledger-live',
-      logo: 'https://www.ledger.com/static/media/ledger-logo.8f8f8f8f.svg',
+      logo: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRiAUo6sKEkoWR0x0HknMUVc3C_Jl05yIHmmcyvytO4454sznSjak8Jh-o&s=10',
       getDeepLink: (url) => `https://ledger.com/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -688,7 +688,7 @@
       name: 'Bybit Wallet',
       rdns: 'com.bybit',
       installUrl: 'https://www.bybit.com/web3/',
-      logo: 'https://www.bybit.com/static/media/bybit-wallet-logo.png',
+      logo: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ1QNFhoGOynmTR8nYSjf9yKH6YCOpSqBuMN-KShQ9WryJgQXNgcWEfl8o&s=10',
       getDeepLink: (url) => `https://www.bybit.com/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -696,7 +696,7 @@
       name: 'imToken',
       rdns: 'com.imtoken',
       installUrl: 'https://token.im/',
-      logo: 'https://token.im/static/media/imtoken-logo.png',
+      logo: 'https://play-lh.googleusercontent.com/E9tTBuzm2sUsPZe5cJpqLUysZjECAfRixgmXjJKDk4bx-iSBD5v1tHTr1hGNgsJVG3BXqK6QHAaGK3aSjkpDGT0=w240-h480-rw',
       getDeepLink: (url) => `https://token.im/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -704,7 +704,7 @@
       name: 'MathWallet',
       rdns: 'com.mathwallet',
       installUrl: 'https://mathwallet.org/',
-      logo: 'https://mathwallet.org/static/media/mathwallet-logo.png',
+      logo: 'https://play-lh.googleusercontent.com/EjdGwnZOP-AGZ5WDFwHVdVZGGP-fuvHOsO-dV8NPWifeCBfjZOZ9aP2mKYS2giyGzd_JpO7bedZZUquZ459zfg',
       getDeepLink: (url) => `https://mathwallet.org/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -712,7 +712,7 @@
       name: 'Frontier',
       rdns: 'com.frontier',
       installUrl: 'https://frontier.xyz/',
-      logo: 'https://frontier.xyz/static/media/frontier-logo.png',
+      logo: 'https://onlywallets.com/wp-content/uploads/0128-01.png',
       getDeepLink: (url) => `https://frontier.xyz/dapp?${encodeURIComponent(url)}`
     },
     {
@@ -720,7 +720,7 @@
       name: 'Zerion',
       rdns: 'io.zerion',
       installUrl: 'https://zerion.io/',
-      logo: 'https://zerion.io/static/media/zerion-logo.svg',
+      logo: 'https://play-lh.googleusercontent.com/m9Ne2k_sHsLtlrdGATKHPNEDW2cDGlFf0FPhafMRxLaiwPnIEQa8J1-CEi3wztqQmmng',
       getDeepLink: (url) => `https://app.zerion.io/dapp?${encodeURIComponent(url)}`
     },
     {
